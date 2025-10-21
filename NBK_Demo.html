@@ -1,0 +1,2268 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NBK - Prototipo Ruben - Descarga CFDI SAT</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .animate-slide-in {
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes spin {
+            from {
+                transform: rotate(0deg);
+            }
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .animate-spin {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: .5;
+            }
+        }
+
+        .animate-pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        /* Scrollbar personalizado */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        /* Loading screen */
+        #loading-screen {
+            position: fixed;
+            inset: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            transition: opacity 0.5s ease-out;
+        }
+
+        #loading-screen.fade-out {
+            opacity: 0;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div id="loading-screen">
+        <div class="text-center">
+            <div class="w-16 h-16 border-4 border-white border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <h2 class="text-white text-2xl font-bold">Cargando NBK...</h2>
+            <p class="text-white/80 mt-2">Prototipo Ruben</p>
+        </div>
+    </div>
+
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useCallback, useMemo, createContext, useContext, useRef } = React;
+
+        // ============================================================================
+        // ICONOS SVG (Lucide React simplificados)
+        // ============================================================================
+        const Icon = ({ children, className = "w-5 h-5", ...props }) => (
+            <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className={className}
+                {...props}
+            >
+                {children}
+            </svg>
+        );
+
+        const Building2 = (props) => (
+            <Icon {...props}>
+                <path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z" />
+                <path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
+                <path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2" />
+                <path d="M10 6h4" />
+                <path d="M10 10h4" />
+                <path d="M10 14h4" />
+                <path d="M10 18h4" />
+            </Icon>
+        );
+
+        const Home = (props) => (
+            <Icon {...props}>
+                <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                <polyline points="9 22 9 12 15 12 15 22" />
+            </Icon>
+        );
+
+        const Download = (props) => (
+            <Icon {...props}>
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" x2="12" y1="15" y2="3" />
+            </Icon>
+        );
+
+        const FileText = (props) => (
+            <Icon {...props}>
+                <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="16" x2="8" y1="13" y2="13" />
+                <line x1="16" x2="8" y1="17" y2="17" />
+                <line x1="10" x2="8" y1="9" y2="9" />
+            </Icon>
+        );
+
+        const Calendar = (props) => (
+            <Icon {...props}>
+                <rect width="18" height="18" x="3" y="4" rx="2" ry="2" />
+                <line x1="16" x2="16" y1="2" y2="6" />
+                <line x1="8" x2="8" y1="2" y2="6" />
+                <line x1="3" x2="21" y1="10" y2="10" />
+            </Icon>
+        );
+
+        const Settings = (props) => (
+            <Icon {...props}>
+                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+                <circle cx="12" cy="12" r="3" />
+            </Icon>
+        );
+
+        const Zap = (props) => (
+            <Icon {...props}>
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+            </Icon>
+        );
+
+        const BarChart3 = (props) => (
+            <Icon {...props}>
+                <path d="M3 3v18h18" />
+                <path d="M18 17V9" />
+                <path d="M13 17V5" />
+                <path d="M8 17v-3" />
+            </Icon>
+        );
+
+        const Activity = (props) => (
+            <Icon {...props}>
+                <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+            </Icon>
+        );
+
+        const HardDrive = (props) => (
+            <Icon {...props}>
+                <line x1="22" x2="2" y1="12" y2="12" />
+                <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+                <line x1="6" x2="6.01" y1="16" y2="16" />
+                <line x1="10" x2="10.01" y1="16" y2="16" />
+            </Icon>
+        );
+
+        const DollarSign = (props) => (
+            <Icon {...props}>
+                <line x1="12" x2="12" y1="2" y2="22" />
+                <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+            </Icon>
+        );
+
+        const CheckCircle2 = (props) => (
+            <Icon {...props}>
+                <circle cx="12" cy="12" r="10" />
+                <path d="m9 12 2 2 4-4" />
+            </Icon>
+        );
+
+        const TrendingUp = (props) => (
+            <Icon {...props}>
+                <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
+                <polyline points="16 7 22 7 22 13" />
+            </Icon>
+        );
+
+        const Clock = (props) => (
+            <Icon {...props}>
+                <circle cx="12" cy="12" r="10" />
+                <polyline points="12 6 12 12 16 14" />
+            </Icon>
+        );
+
+        const RefreshCw = (props) => (
+            <Icon {...props}>
+                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+                <path d="M21 3v5h-5" />
+                <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+                <path d="M8 16H3v5" />
+            </Icon>
+        );
+
+        const User = (props) => (
+            <Icon {...props}>
+                <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+            </Icon>
+        );
+
+        const Wifi = (props) => (
+            <Icon {...props}>
+                <path d="M5 13a10 10 0 0 1 14 0" />
+                <path d="M8.5 16.5a5 5 0 0 1 7 0" />
+                <path d="M2 8.82a15 15 0 0 1 20 0" />
+                <line x1="12" x2="12.01" y1="20" y2="20" />
+            </Icon>
+        );
+
+        const WifiOff = (props) => (
+            <Icon {...props}>
+                <line x1="2" x2="22" y1="2" y2="22" />
+                <path d="M8.5 16.5a5 5 0 0 1 7 0" />
+                <path d="M2 8.82a15 15 0 0 1 4.17-2.65" />
+                <path d="M10.66 5c4.01-.36 8.14.9 11.34 3.76" />
+                <path d="M16.85 11.25a10 10 0 0 1 2.22 1.68" />
+                <path d="M5 13a10 10 0 0 1 5.24-2.76" />
+                <line x1="12" x2="12.01" y1="20" y2="20" />
+            </Icon>
+        );
+
+        const Bell = (props) => (
+            <Icon {...props}>
+                <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+                <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+            </Icon>
+        );
+
+        const Command = (props) => (
+            <Icon {...props}>
+                <path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3" />
+            </Icon>
+        );
+
+        const Plus = (props) => (
+            <Icon {...props}>
+                <path d="M5 12h14" />
+                <path d="M12 5v14" />
+            </Icon>
+        );
+
+        const X = (props) => (
+            <Icon {...props}>
+                <path d="M18 6 6 18" />
+                <path d="m6 6 12 12" />
+            </Icon>
+        );
+
+        const Menu = (props) => (
+            <Icon {...props}>
+                <line x1="4" x2="20" y1="12" y2="12" />
+                <line x1="4" x2="20" y1="6" y2="6" />
+                <line x1="4" x2="20" y1="18" y2="18" />
+            </Icon>
+        );
+
+        const ChevronDown = (props) => (
+            <Icon {...props}>
+                <path d="m6 9 6 6 6-6" />
+            </Icon>
+        );
+
+        const Star = (props) => (
+            <Icon {...props}>
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+            </Icon>
+        );
+
+        const Search = (props) => (
+            <Icon {...props}>
+                <circle cx="11" cy="11" r="8" />
+                <path d="m21 21-4.3-4.3" />
+            </Icon>
+        );
+
+        const Grid3x3 = (props) => (
+            <Icon {...props}>
+                <rect width="18" height="18" x="3" y="3" rx="2" />
+                <path d="M3 9h18" />
+                <path d="M3 15h18" />
+                <path d="M9 3v18" />
+                <path d="M15 3v18" />
+            </Icon>
+        );
+
+        const List = (props) => (
+            <Icon {...props}>
+                <line x1="8" x2="21" y1="6" y2="6" />
+                <line x1="8" x2="21" y1="12" y2="12" />
+                <line x1="8" x2="21" y1="18" y2="18" />
+                <line x1="3" x2="3.01" y1="6" y2="6" />
+                <line x1="3" x2="3.01" y1="12" y2="12" />
+                <line x1="3" x2="3.01" y1="18" y2="18" />
+            </Icon>
+        );
+
+        const Eye = (props) => (
+            <Icon {...props}>
+                <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+                <circle cx="12" cy="12" r="3" />
+            </Icon>
+        );
+
+        const Loader2 = (props) => (
+            <Icon {...props}>
+                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+            </Icon>
+        );
+
+        const AlertCircle = (props) => (
+            <Icon {...props}>
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" x2="12" y1="8" y2="12" />
+                <line x1="12" x2="12.01" y1="16" y2="16" />
+            </Icon>
+        );
+
+        const Gauge = (props) => (
+            <Icon {...props}>
+                <path d="m12 14 4-4" />
+                <path d="M3.34 19a10 10 0 1 1 17.32 0" />
+            </Icon>
+        );
+
+        const Users = (props) => (
+            <Icon {...props}>
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+            </Icon>
+        );
+
+        const Database = (props) => (
+            <Icon {...props}>
+                <ellipse cx="12" cy="5" rx="9" ry="3" />
+                <path d="M3 5V19A9 3 0 0 0 21 19V5" />
+                <path d="M3 12A9 3 0 0 0 21 12" />
+            </Icon>
+        );
+
+        const FileDown = (props) => (
+            <Icon {...props}>
+                <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
+                <polyline points="14 2 14 8 20 8" />
+                <path d="M12 18v-6" />
+                <path d="m9 15 3 3 3-3" />
+            </Icon>
+        );
+
+        const Archive = (props) => (
+            <Icon {...props}>
+                <rect width="20" height="5" x="2" y="3" rx="1" />
+                <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" />
+                <path d="M10 12h4" />
+            </Icon>
+        );
+
+        const Upload = (props) => (
+            <Icon {...props}>
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" x2="12" y1="3" y2="15" />
+            </Icon>
+        );
+
+        // ============================================================================
+        // COMPANY CONTEXT (Simplificado para demo)
+        // ============================================================================
+        const CompanyContext = createContext();
+
+        const useCompany = () => {
+            const context = useContext(CompanyContext);
+            if (!context) {
+                throw new Error('useCompany must be used within CompanyProvider');
+            }
+            return context;
+        };
+
+        const CompanyProvider = ({ children }) => {
+            const [empresas, setEmpresas] = useState([
+                {
+                    id: '1',
+                    rfc: 'XAXX010101000',
+                    razonSocial: 'Empresa Demo SA de CV',
+                    nombreCorto: 'Empresa Demo',
+                    pseudonimo: 'Demo Corp',
+                    nivel: 'Premium',
+                    regimen: '601 - General de Ley',
+                    status: 'active',
+                    isFavorite: true,
+                    storage: {
+                        used: 2345678900,
+                        limit: 10737418240,
+                        lastSync: new Date().toISOString()
+                    },
+                    stats: {
+                        totalXMLs: 1247,
+                        xmlsThisMonth: 156,
+                        totalEmitidos: 980,
+                        totalRecibidos: 267,
+                        ingresos: 15750000.50,
+                        deducciones: 3250000.75
+                    },
+                    autoSync: {
+                        enabled: true,
+                        frequency: 'daily',
+                        lastRun: new Date().toISOString()
+                    },
+                    fielConfig: {
+                        expirationDate: '2025-12-31'
+                    }
+                },
+                {
+                    id: '2',
+                    rfc: 'ABC123456789',
+                    razonSocial: 'Otra Empresa SA de CV',
+                    nombreCorto: 'Otra Empresa',
+                    pseudonimo: 'OtraEmp',
+                    nivel: 'Básico',
+                    regimen: '601 - General de Ley',
+                    status: 'active',
+                    isFavorite: false,
+                    storage: {
+                        used: 1234567890,
+                        limit: 10737418240,
+                        lastSync: new Date().toISOString()
+                    },
+                    stats: {
+                        totalXMLs: 856,
+                        xmlsThisMonth: 89,
+                        totalEmitidos: 654,
+                        totalRecibidos: 202,
+                        ingresos: 8500000.00,
+                        deducciones: 1750000.25
+                    },
+                    autoSync: {
+                        enabled: true,
+                        frequency: 'weekly'
+                    },
+                    fielConfig: {
+                        expirationDate: '2024-03-15'
+                    }
+                },
+                {
+                    id: '3',
+                    rfc: 'DEF987654321',
+                    razonSocial: 'Cliente Principal SA',
+                    nombreCorto: 'Cliente Principal',
+                    pseudonimo: 'ClientePrin',
+                    nivel: 'Enterprise',
+                    regimen: '601 - General de Ley',
+                    status: 'active',
+                    isFavorite: true,
+                    storage: {
+                        used: 5432198760,
+                        limit: 10737418240,
+                        lastSync: new Date().toISOString()
+                    },
+                    stats: {
+                        totalXMLs: 2145,
+                        xmlsThisMonth: 203,
+                        totalEmitidos: 1567,
+                        totalRecibidos: 578,
+                        ingresos: 25000000.00,
+                        deducciones: 5200000.50
+                    },
+                    autoSync: {
+                        enabled: false,
+                        frequency: 'monthly'
+                    },
+                    fielConfig: {
+                        expirationDate: '2025-06-30'
+                    }
+                }
+            ]);
+
+            const [empresaActiva, setEmpresaActiva] = useState(empresas[0]);
+            const [loading, setLoading] = useState(false);
+
+            const switchEmpresa = useCallback((rfc) => {
+                const empresa = empresas.find(e => e.rfc === rfc);
+                if (empresa) {
+                    setEmpresaActiva(empresa);
+                }
+            }, [empresas]);
+
+            const toggleFavorite = useCallback((rfc) => {
+                setEmpresas(prev => prev.map(e =>
+                    e.rfc === rfc ? { ...e, isFavorite: !e.isFavorite } : e
+                ));
+            }, []);
+
+            const value = {
+                empresas,
+                empresaActiva,
+                loading,
+                switchEmpresa,
+                toggleFavorite,
+                reloadEmpresas: () => {}
+            };
+
+            return (
+                <CompanyContext.Provider value={value}>
+                    {children}
+                </CompanyContext.Provider>
+            );
+        };
+
+        // ============================================================================
+        // UTILITY FUNCTIONS
+        // ============================================================================
+        const formatBytes = (bytes) => {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+        };
+
+        const formatCurrency = (amount) => {
+            return new Intl.NumberFormat('es-MX', {
+                style: 'currency',
+                currency: 'MXN'
+            }).format(amount);
+        };
+
+        const formatDate = (dateString) => {
+            if (!dateString) return 'N/A';
+            return new Date(dateString).toLocaleDateString('es-MX', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric'
+            });
+        };
+
+        const formatDateTime = (dateString) => {
+            if (!dateString) return 'N/A';
+            return new Date(dateString).toLocaleString('es-MX', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        };
+
+        // ============================================================================
+        // COMMAND PALETTE
+        // ============================================================================
+        const CommandPalette = ({ isOpen, onClose, onCommand }) => {
+            const [search, setSearch] = useState('');
+            const inputRef = useRef(null);
+
+            const commands = [
+                { id: 'quick_download', label: 'Descarga rápida (último mes)', category: 'Descargas' },
+                { id: 'custom_download', label: 'Nueva descarga personalizada', category: 'Descargas' },
+                { id: 'schedule_download', label: 'Programar descarga', category: 'Descargas' },
+                { id: 'sync_now', label: 'Sincronizar ahora', category: 'Descargas' },
+                { id: 'view_files', label: 'Ver archivos descargados', category: 'Navegación' },
+                { id: 'view_automation', label: 'Ver automatización', category: 'Navegación' },
+                { id: 'view_analytics', label: 'Ver análisis', category: 'Navegación' },
+                { id: 'export_month', label: 'Exportar mes actual', category: 'Exportar' },
+                { id: 'companies', label: 'Gestión de empresas', category: 'Navegación' }
+            ];
+
+            const filteredCommands = useMemo(() => {
+                if (!search) return commands;
+                return commands.filter(cmd =>
+                    cmd.label.toLowerCase().includes(search.toLowerCase())
+                );
+            }, [search]);
+
+            useEffect(() => {
+                if (isOpen && inputRef.current) {
+                    inputRef.current.focus();
+                }
+            }, [isOpen]);
+
+            if (!isOpen) return null;
+
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 pt-20 px-4">
+                    <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full">
+                        <div className="p-4 border-b border-gray-200">
+                            <div className="relative">
+                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                                <input
+                                    ref={inputRef}
+                                    type="text"
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                    placeholder="Buscar comando..."
+                                    className="w-full pl-10 pr-4 py-3 border-0 focus:ring-0 text-lg outline-none"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="max-h-96 overflow-y-auto">
+                            {filteredCommands.map((cmd) => (
+                                <button
+                                    key={cmd.id}
+                                    onClick={() => {
+                                        onCommand(cmd.id);
+                                        onClose();
+                                    }}
+                                    className="w-full px-4 py-3 flex items-center hover:bg-gray-50 transition text-left"
+                                >
+                                    <span className="text-gray-900">{cmd.label}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // ============================================================================
+        // COMPANY SWITCHER (Dropdown)
+        // ============================================================================
+        const CompanySwitcher = () => {
+            const { empresas, empresaActiva, switchEmpresa } = useCompany();
+            const [isOpen, setIsOpen] = useState(false);
+            const dropdownRef = useRef(null);
+
+            useEffect(() => {
+                const handleClickOutside = (event) => {
+                    if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+                        setIsOpen(false);
+                    }
+                };
+
+                document.addEventListener('mousedown', handleClickOutside);
+                return () => document.removeEventListener('mousedown', handleClickOutside);
+            }, []);
+
+            const favoritos = empresas.filter(e => e.isFavorite);
+            const otras = empresas.filter(e => !e.isFavorite);
+
+            return (
+                <div className="relative" ref={dropdownRef}>
+                    <button
+                        onClick={() => setIsOpen(!isOpen)}
+                        className="flex items-center gap-3 px-4 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition"
+                    >
+                        <Building2 className="w-5 h-5 text-indigo-600" />
+                        <div className="text-left">
+                            <div className="text-sm font-semibold text-gray-900">
+                                {empresaActiva?.nombreCorto}
+                            </div>
+                            <div className="text-xs text-gray-500 font-mono">
+                                {empresaActiva?.rfc}
+                            </div>
+                        </div>
+                        <ChevronDown className="w-4 h-4 text-gray-400" />
+                    </button>
+
+                    {isOpen && (
+                        <div className="absolute top-full left-0 mt-2 w-80 bg-white rounded-xl shadow-2xl border border-gray-200 py-2 z-50">
+                            {favoritos.length > 0 && (
+                                <>
+                                    <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase">
+                                        Favoritas
+                                    </div>
+                                    {favoritos.map(empresa => (
+                                        <button
+                                            key={empresa.rfc}
+                                            onClick={() => {
+                                                switchEmpresa(empresa.rfc);
+                                                setIsOpen(false);
+                                            }}
+                                            className={`w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-50 transition ${
+                                                empresaActiva?.rfc === empresa.rfc ? 'bg-indigo-50' : ''
+                                            }`}
+                                        >
+                                            <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                                <Building2 className="w-5 h-5 text-indigo-600" />
+                                            </div>
+                                            <div className="flex-1 text-left">
+                                                <div className="font-semibold text-gray-900 text-sm">
+                                                    {empresa.nombreCorto}
+                                                </div>
+                                                <div className="text-xs text-gray-500 font-mono">
+                                                    {empresa.rfc}
+                                                </div>
+                                                <div className="text-xs text-gray-400">
+                                                    {empresa.stats.totalXMLs.toLocaleString()} XMLs • {formatBytes(empresa.storage.used)}
+                                                </div>
+                                            </div>
+                                            {empresaActiva?.rfc === empresa.rfc && (
+                                                <CheckCircle2 className="w-5 h-5 text-indigo-600" />
+                                            )}
+                                        </button>
+                                    ))}
+                                </>
+                            )}
+
+                            {otras.length > 0 && (
+                                <>
+                                    <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase border-t mt-2 pt-2">
+                                        Todas ({empresas.length})
+                                    </div>
+                                    {otras.map(empresa => (
+                                        <button
+                                            key={empresa.rfc}
+                                            onClick={() => {
+                                                switchEmpresa(empresa.rfc);
+                                                setIsOpen(false);
+                                            }}
+                                            className={`w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-50 transition ${
+                                                empresaActiva?.rfc === empresa.rfc ? 'bg-indigo-50' : ''
+                                            }`}
+                                        >
+                                            <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                                <Building2 className="w-5 h-5 text-gray-600" />
+                                            </div>
+                                            <div className="flex-1 text-left">
+                                                <div className="font-semibold text-gray-900 text-sm">
+                                                    {empresa.nombreCorto}
+                                                </div>
+                                                <div className="text-xs text-gray-500 font-mono">
+                                                    {empresa.rfc}
+                                                </div>
+                                                <div className="text-xs text-gray-400">
+                                                    {empresa.stats.totalXMLs.toLocaleString()} XMLs • {formatBytes(empresa.storage.used)}
+                                                </div>
+                                            </div>
+                                        </button>
+                                    ))}
+                                </>
+                            )}
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // ============================================================================
+        // AUTH MODAL COMPONENT
+        // ============================================================================
+        const AuthModal = ({ isOpen, onClose, onSuccess, addNotification }) => {
+            const [authMethod, setAuthMethod] = useState('ciec');
+            const [rfc, setRfc] = useState('');
+            const [password, setPassword] = useState('');
+            const [certificateFile, setCertificateFile] = useState(null);
+            const [keyFile, setKeyFile] = useState(null);
+            const [isAuthenticating, setIsAuthenticating] = useState(false);
+
+            const handleCIECAuth = async () => {
+                if (!rfc || !password) {
+                    addNotification('Por favor ingrese RFC y contraseña', 'error');
+                    return;
+                }
+
+                setIsAuthenticating(true);
+                try {
+                    const result = await api.loginCIEC(rfc, password);
+                    if (result.success) {
+                        onSuccess(result);
+                    } else {
+                        addNotification(result.error || 'Error al autenticar con CIEC', 'error');
+                    }
+                } catch (error) {
+                    addNotification('Error de conexión: ' + error.message, 'error');
+                } finally {
+                    setIsAuthenticating(false);
+                }
+            };
+
+            const handleEFirmaAuth = async () => {
+                if (!certificateFile || !keyFile || !password) {
+                    addNotification('Por favor seleccione ambos archivos e ingrese la contraseña', 'error');
+                    return;
+                }
+
+                setIsAuthenticating(true);
+                try {
+                    const result = await api.loginEFirma(certificateFile, keyFile, password);
+                    if (result.success) {
+                        onSuccess(result);
+                    } else {
+                        addNotification(result.error || 'Error al autenticar con e.firma', 'error');
+                    }
+                } catch (error) {
+                    addNotification('Error de conexión: ' + error.message, 'error');
+                } finally {
+                    setIsAuthenticating(false);
+                }
+            };
+
+            if (!isOpen) return null;
+
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-xl shadow-2xl max-w-md w-full">
+                        <div className="p-6 border-b border-gray-200">
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-2xl font-bold text-gray-900">Configurar Credenciales</h2>
+                                <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg transition">
+                                    <X className="w-6 h-6 text-gray-600" />
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="p-6 space-y-6">
+                            {/* Auth Method Tabs */}
+                            <div className="flex gap-2 border-b border-gray-200">
+                                <button
+                                    onClick={() => setAuthMethod('ciec')}
+                                    className={`flex-1 pb-3 font-medium transition ${
+                                        authMethod === 'ciec'
+                                            ? 'text-indigo-600 border-b-2 border-indigo-600'
+                                            : 'text-gray-500 hover:text-gray-700'
+                                    }`}
+                                >
+                                    CIEC
+                                </button>
+                                <button
+                                    onClick={() => setAuthMethod('efirma')}
+                                    className={`flex-1 pb-3 font-medium transition ${
+                                        authMethod === 'efirma'
+                                            ? 'text-indigo-600 border-b-2 border-indigo-600'
+                                            : 'text-gray-500 hover:text-gray-700'
+                                    }`}
+                                >
+                                    e.firma
+                                </button>
+                            </div>
+
+                            {/* CIEC Form */}
+                            {authMethod === 'ciec' && (
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            RFC
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={rfc}
+                                            onChange={(e) => setRfc(e.target.value.toUpperCase())}
+                                            placeholder="XAXX010101000"
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none font-mono"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Contraseña CIEC
+                                        </label>
+                                        <input
+                                            type="password"
+                                            value={password}
+                                            onChange={(e) => setPassword(e.target.value)}
+                                            placeholder="••••••••"
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* e.firma Form */}
+                            {authMethod === 'efirma' && (
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Certificado (.cer)
+                                        </label>
+                                        <input
+                                            type="file"
+                                            accept=".cer"
+                                            onChange={(e) => setCertificateFile(e.target.files[0])}
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Llave Privada (.key)
+                                        </label>
+                                        <input
+                                            type="file"
+                                            accept=".key"
+                                            onChange={(e) => setKeyFile(e.target.files[0])}
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Contraseña de la Llave Privada
+                                        </label>
+                                        <input
+                                            type="password"
+                                            value={password}
+                                            onChange={(e) => setPassword(e.target.value)}
+                                            placeholder="••••••••"
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            <button
+                                onClick={authMethod === 'ciec' ? handleCIECAuth : handleEFirmaAuth}
+                                disabled={isAuthenticating}
+                                className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            >
+                                {isAuthenticating ? (
+                                    <>
+                                        <Loader2 className="w-5 h-5 animate-spin" />
+                                        Autenticando...
+                                    </>
+                                ) : (
+                                    'Autenticar'
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // ============================================================================
+        // DOWNLOAD MODAL COMPONENT
+        // ============================================================================
+        const DownloadModal = ({ isOpen, onClose, downloadType, satSession, addNotification, isDownloading, setIsDownloading }) => {
+            const [fechaInicio, setFechaInicio] = useState('');
+            const [fechaFin, setFechaFin] = useState('');
+
+            const handleDownload = async () => {
+                if (!fechaInicio || !fechaFin) {
+                    addNotification('Por favor seleccione ambas fechas', 'error');
+                    return;
+                }
+
+                if (new Date(fechaInicio) > new Date(fechaFin)) {
+                    addNotification('La fecha de inicio debe ser anterior a la fecha fin', 'error');
+                    return;
+                }
+
+                setIsDownloading(true);
+                try {
+                    const downloadFunction = downloadType === 'emitidas' ? api.downloadEmitidas : api.downloadRecibidas;
+                    const result = await downloadFunction(fechaInicio, fechaFin);
+
+                    if (result.success) {
+                        addNotification(`Descarga completada: ${result.facturas?.length || 0} facturas`, 'success');
+                        if (result.downloadUrl) {
+                            api.downloadFile(result.zipFile);
+                        }
+                        onClose();
+                    } else {
+                        addNotification(result.error || 'Error al descargar facturas', 'error');
+                    }
+                } catch (error) {
+                    addNotification('Error de conexión: ' + error.message, 'error');
+                } finally {
+                    setIsDownloading(false);
+                }
+            };
+
+            if (!isOpen) return null;
+
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-xl shadow-2xl max-w-md w-full">
+                        <div className="p-6 border-b border-gray-200">
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-2xl font-bold text-gray-900">
+                                    {downloadType === 'emitidas' ? 'Descargar Emitidas' : 'Descargar Recibidas'}
+                                </h2>
+                                <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg transition">
+                                    <X className="w-6 h-6 text-gray-600" />
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="p-6 space-y-6">
+                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                <p className="text-sm text-blue-800">
+                                    <strong>RFC:</strong> {satSession?.rfc || 'No disponible'}
+                                </p>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Fecha de Inicio
+                                </label>
+                                <input
+                                    type="date"
+                                    value={fechaInicio}
+                                    onChange={(e) => setFechaInicio(e.target.value)}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Fecha Fin
+                                </label>
+                                <input
+                                    type="date"
+                                    value={fechaFin}
+                                    onChange={(e) => setFechaFin(e.target.value)}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                                />
+                            </div>
+
+                            <button
+                                onClick={handleDownload}
+                                disabled={isDownloading}
+                                className={`w-full py-3 text-white rounded-lg font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${
+                                    downloadType === 'emitidas'
+                                        ? 'bg-green-600 hover:bg-green-700'
+                                        : 'bg-red-600 hover:bg-red-700'
+                                }`}
+                            >
+                                {isDownloading ? (
+                                    <>
+                                        <Loader2 className="w-5 h-5 animate-spin" />
+                                        Descargando...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Download className="w-5 h-5" />
+                                        Descargar {downloadType === 'emitidas' ? 'Emitidas' : 'Recibidas'}
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // ============================================================================
+        // API SERVICE
+        // ============================================================================
+        const API_BASE_URL = 'http://localhost:3000/api';
+
+        const api = {
+            async loginCIEC(rfc, password) {
+                const response = await fetch(`${API_BASE_URL}/auth/login-ciec`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ rfc, password })
+                });
+                return await response.json();
+            },
+
+            async loginEFirma(certificateFile, keyFile, password) {
+                const formData = new FormData();
+                formData.append('certificate', certificateFile);
+                formData.append('key', keyFile);
+                formData.append('password', password);
+
+                const response = await fetch(`${API_BASE_URL}/auth/login-efirma`, {
+                    method: 'POST',
+                    body: formData
+                });
+                return await response.json();
+            },
+
+            async getSession() {
+                const response = await fetch(`${API_BASE_URL}/auth/session`);
+                return await response.json();
+            },
+
+            async logout() {
+                const response = await fetch(`${API_BASE_URL}/auth/logout`, {
+                    method: 'POST'
+                });
+                return await response.json();
+            },
+
+            async downloadEmitidas(fechaInicio, fechaFin) {
+                const response = await fetch(`${API_BASE_URL}/download/emitidas`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ fechaInicio, fechaFin, formato: 'zip' })
+                });
+                return await response.json();
+            },
+
+            async downloadRecibidas(fechaInicio, fechaFin) {
+                const response = await fetch(`${API_BASE_URL}/download/recibidas`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ fechaInicio, fechaFin, formato: 'zip' })
+                });
+                return await response.json();
+            },
+
+            async downloadFile(path) {
+                window.open(`${API_BASE_URL}/download/file?path=${encodeURIComponent(path)}`, '_blank');
+            },
+
+            async extractConstancia(pdfFile) {
+                const formData = new FormData();
+                formData.append('constancia', pdfFile);
+
+                const response = await fetch(`${API_BASE_URL}/companies/extract-constancia`, {
+                    method: 'POST',
+                    body: formData
+                });
+                return await response.json();
+            },
+
+            async addCompany(companyData) {
+                const response = await fetch(`${API_BASE_URL}/companies`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(companyData)
+                });
+                return await response.json();
+            }
+        };
+
+        // ============================================================================
+        // ADD EMPRESA MODAL COMPONENT
+        // ============================================================================
+        const AddEmpresaModal = ({ isOpen, onClose, addNotification }) => {
+            const [extractedData, setExtractedData] = useState(null);
+            const [isExtracting, setIsExtracting] = useState(false);
+            const [isSaving, setIsSaving] = useState(false);
+            const [pdfFile, setPdfFile] = useState(null);
+
+            const handlePdfUpload = async (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                setPdfFile(file);
+                setIsExtracting(true);
+                addNotification('Procesando PDF...', 'info');
+
+                try {
+                    const result = await api.extractConstancia(file);
+                    if (result.success) {
+                        setExtractedData(result.data);
+                        addNotification('Datos extraídos correctamente', 'success');
+                    } else {
+                        addNotification(result.error || 'Error al extraer datos del PDF', 'error');
+                    }
+                } catch (error) {
+                    addNotification('Error al procesar el PDF: ' + error.message, 'error');
+                } finally {
+                    setIsExtracting(false);
+                }
+            };
+
+            const handleSaveCompany = async () => {
+                if (!extractedData || !extractedData.rfc) {
+                    addNotification('Por favor cargue una Constancia Fiscal válida', 'error');
+                    return;
+                }
+
+                setIsSaving(true);
+                try {
+                    const result = await api.addCompany(extractedData);
+                    if (result.success) {
+                        addNotification('Empresa agregada exitosamente', 'success');
+                        onClose();
+                        // Recargar la página para mostrar la nueva empresa
+                        window.location.reload();
+                    } else {
+                        addNotification(result.error || 'Error al guardar la empresa', 'error');
+                    }
+                } catch (error) {
+                    addNotification('Error al guardar: ' + error.message, 'error');
+                } finally {
+                    setIsSaving(false);
+                }
+            };
+
+            if (!isOpen) return null;
+
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                        <div className="p-6 border-b border-gray-200 sticky top-0 bg-white">
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-2xl font-bold text-gray-900 flex items-center">
+                                    <Building2 className="w-6 h-6 mr-3 text-indigo-600" />
+                                    Agregar Nueva Empresa
+                                </h2>
+                                <button
+                                    onClick={onClose}
+                                    className="p-2 hover:bg-gray-100 rounded-lg transition"
+                                >
+                                    <X className="w-6 h-6 text-gray-600" />
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="p-6 space-y-6">
+                            {/* Upload Constancia */}
+                            <div className={`border-2 border-dashed rounded-lg p-12 text-center transition cursor-pointer ${
+                                isExtracting ? 'border-indigo-400 bg-indigo-50' : 'border-gray-300 bg-gray-50 hover:border-gray-400'
+                            }`}>
+                                <Upload className={`w-16 h-16 mx-auto mb-4 ${isExtracting ? 'text-indigo-600 animate-pulse' : 'text-gray-400'}`} />
+                                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                                    Constancia de Situación Fiscal (PDF)
+                                </h3>
+                                <p className="text-sm text-gray-600 mb-4">
+                                    {isExtracting ? 'Extrayendo datos del PDF...' : 'El sistema extraerá automáticamente los datos de la constancia'}
+                                </p>
+                                {pdfFile && (
+                                    <p className="text-sm text-indigo-600 font-medium mb-3">
+                                        Archivo: {pdfFile.name}
+                                    </p>
+                                )}
+                                <input
+                                    type="file"
+                                    accept=".pdf"
+                                    onChange={handlePdfUpload}
+                                    className="hidden"
+                                    id="constancia-upload"
+                                    disabled={isExtracting}
+                                />
+                                <label
+                                    htmlFor="constancia-upload"
+                                    className={`inline-block px-6 py-3 rounded-lg font-medium transition cursor-pointer ${
+                                        isExtracting
+                                            ? 'bg-gray-400 text-white cursor-not-allowed'
+                                            : 'bg-gray-800 hover:bg-gray-900 text-white'
+                                    }`}
+                                >
+                                    {isExtracting ? (
+                                        <span className="flex items-center gap-2">
+                                            <Loader2 className="w-5 h-5 animate-spin" />
+                                            Procesando...
+                                        </span>
+                                    ) : (
+                                        pdfFile ? 'Cambiar PDF' : 'Seleccionar PDF'
+                                    )}
+                                </label>
+                            </div>
+
+                            {/* Datos Extraídos */}
+                            <div className={`space-y-4 p-6 rounded-lg transition ${
+                                extractedData ? 'bg-green-50 border-2 border-green-200' : 'bg-gray-50'
+                            }`}>
+                                <h3 className="text-sm font-semibold uppercase tracking-wide mb-4 flex items-center gap-2">
+                                    {extractedData ? (
+                                        <>
+                                            <CheckCircle2 className="w-5 h-5 text-green-600" />
+                                            <span className="text-green-700">Datos Extraídos</span>
+                                        </>
+                                    ) : (
+                                        <span className="text-gray-700">Datos de la Empresa</span>
+                                    )}
+                                </h3>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-600 mb-1">
+                                            RFC
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={extractedData?.rfc || ''}
+                                            readOnly
+                                            placeholder="Se extraerá del PDF"
+                                            className={`w-full px-3 py-2 bg-white border rounded text-sm font-mono ${
+                                                extractedData?.rfc ? 'border-green-300 text-gray-900 font-semibold' : 'border-gray-200 text-gray-500'
+                                            }`}
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-600 mb-1">
+                                            Régimen Fiscal
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={extractedData?.regimen || ''}
+                                            readOnly
+                                            placeholder="Se extraerá del PDF"
+                                            className={`w-full px-3 py-2 bg-white border rounded text-sm ${
+                                                extractedData?.regimen ? 'border-green-300 text-gray-900' : 'border-gray-200 text-gray-500'
+                                            }`}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                                        Razón Social
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={extractedData?.razonSocial || ''}
+                                        readOnly
+                                        placeholder="Se extraerá del PDF"
+                                        className={`w-full px-3 py-2 bg-white border rounded text-sm ${
+                                            extractedData?.razonSocial ? 'border-green-300 text-gray-900' : 'border-gray-200 text-gray-500'
+                                        }`}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                                        Domicilio Fiscal
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={extractedData?.domicilioFiscal || ''}
+                                        readOnly
+                                        placeholder="Se extraerá del PDF"
+                                        className={`w-full px-3 py-2 bg-white border rounded text-sm ${
+                                            extractedData?.domicilioFiscal ? 'border-green-300 text-gray-900' : 'border-gray-200 text-gray-500'
+                                        }`}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                                        Giro de la Empresa
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={extractedData?.giro || ''}
+                                        readOnly
+                                        placeholder="Se extraerá del PDF"
+                                        className={`w-full px-3 py-2 bg-white border rounded text-sm ${
+                                            extractedData?.giro ? 'border-green-300 text-gray-900' : 'border-gray-200 text-gray-500'
+                                        }`}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="p-6 border-t border-gray-200 bg-gray-50 flex gap-3">
+                            <button
+                                onClick={onClose}
+                                className="flex-1 px-6 py-3 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-100 transition"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={handleSaveCompany}
+                                disabled={!extractedData || isSaving}
+                                className="flex-1 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            >
+                                {isSaving ? (
+                                    <>
+                                        <Loader2 className="w-5 h-5 animate-spin" />
+                                        Guardando...
+                                    </>
+                                ) : (
+                                    <>
+                                        <CheckCircle2 className="w-5 h-5" />
+                                        Agregar Empresa
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // ============================================================================
+        // MAIN DASHBOARD
+        // ============================================================================
+        const NBKMasterDashboard = () => {
+            const { empresaActiva } = useCompany();
+            const [currentView, setCurrentView] = useState('empresas');
+            const [sidebarOpen, setSidebarOpen] = useState(true);
+            const [isOnline, setIsOnline] = useState(true);
+            const [showCommandPalette, setShowCommandPalette] = useState(false);
+            const [showFloatingMenu, setShowFloatingMenu] = useState(false);
+            const [showAddEmpresaModal, setShowAddEmpresaModal] = useState(false);
+            const [showAuthModal, setShowAuthModal] = useState(false);
+            const [showDownloadModal, setShowDownloadModal] = useState(false);
+            const [downloadType, setDownloadType] = useState(null);
+            const [satSession, setSatSession] = useState(null);
+            const [isDownloading, setIsDownloading] = useState(false);
+            const [notifications, setNotifications] = useState([]);
+
+            const stats = useMemo(() => {
+                // Calcular ingresos (subtotal de emitidos)
+                const ingresos = 2456789.50;
+                const ivaACargo = ingresos * 0.16; // 16% del subtotal
+
+                // Calcular deducciones (subtotal de recibidos)
+                const deducciones = 1234567.80;
+                const ivaAcreditable = deducciones * 0.16; // 16% del subtotal
+
+                return {
+                    totalXMLs: empresaActiva?.stats?.totalXMLs || 0,
+                    storageUsed: empresaActiva?.storage?.used || 0,
+                    storageLimit: empresaActiva?.storage?.limit || 10737418240,
+                    lastSync: empresaActiva?.storage?.lastSync,
+                    xmlsThisMonth: empresaActiva?.stats?.xmlsThisMonth || 0,
+                    ingresos: ingresos,
+                    ivaACargo: ivaACargo,
+                    deducciones: deducciones,
+                    ivaAcreditable: ivaAcreditable,
+                    downloadSpeed: 45.2
+                };
+            }, [empresaActiva]);
+
+            const [recentActivity] = useState([
+                { id: 1, type: 'download', description: 'Descargados 45 XMLs de Enero 2024', timestamp: new Date(Date.now() - 30 * 60 * 1000).toISOString() },
+                { id: 2, type: 'sync', description: 'Sincronización automática completada', timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() },
+                { id: 3, type: 'export', description: 'Exportación a Excel generada', timestamp: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString() }
+            ]);
+
+            const [upcomingSyncs] = useState([
+                { id: 1, name: 'Sync Diario', nextRun: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString() },
+                { id: 2, name: 'Backup Semanal', nextRun: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString() }
+            ]);
+
+            useEffect(() => {
+                const handleKeyDown = (e) => {
+                    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+                        e.preventDefault();
+                        setShowCommandPalette(true);
+                    }
+                    if (e.key === 'Escape') {
+                        setShowCommandPalette(false);
+                        setShowFloatingMenu(false);
+                    }
+                };
+
+                window.addEventListener('keydown', handleKeyDown);
+                return () => window.removeEventListener('keydown', handleKeyDown);
+            }, []);
+
+            const handleCommand = (commandId) => {
+                if (commandId === 'companies') {
+                    setCurrentView('companies');
+                } else {
+                    addNotification(`Ejecutando: ${commandId}`, 'info');
+                }
+            };
+
+            const addNotification = (message, type = 'info') => {
+                const notification = {
+                    id: Date.now(),
+                    message,
+                    type,
+                    timestamp: new Date().toISOString()
+                };
+                setNotifications(prev => [notification, ...prev].slice(0, 5));
+
+                setTimeout(() => {
+                    setNotifications(prev => prev.filter(n => n.id !== notification.id));
+                }, 5000);
+            };
+
+            const storagePercentage = (stats.storageUsed / stats.storageLimit) * 100;
+
+            return (
+                <div className="h-screen flex bg-gray-50 overflow-hidden">
+                    {/* Sidebar */}
+                    <aside className={`bg-white border-r border-gray-200 transition-all duration-300 ${sidebarOpen ? 'w-64' : 'w-20'}`}>
+                        <div className="h-full flex flex-col">
+                            <div className="h-16 flex items-center justify-between px-4 border-b border-gray-200">
+                                {sidebarOpen ? (
+                                    <>
+                                        <div className="flex items-center">
+                                            <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
+                                                <Building2 className="w-5 h-5 text-white" />
+                                            </div>
+                                            <span className="ml-2 font-bold text-gray-900">NBK</span>
+                                        </div>
+                                        <button onClick={() => setSidebarOpen(false)} className="p-1 hover:bg-gray-100 rounded">
+                                            <X className="w-5 h-5 text-gray-600" />
+                                        </button>
+                                    </>
+                                ) : (
+                                    <button onClick={() => setSidebarOpen(true)} className="p-1 hover:bg-gray-100 rounded mx-auto">
+                                        <Menu className="w-5 h-5 text-gray-600" />
+                                    </button>
+                                )}
+                            </div>
+
+                            <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+                                {[
+                                    { id: 'empresas', icon: Building2, label: 'Empresas' },
+                                    { id: 'dashboard', icon: Home, label: 'Dashboard' },
+                                    { id: 'download', icon: Download, label: 'Descargas' },
+                                    { id: 'files', icon: FileText, label: 'Archivos' },
+                                    { id: 'automation', icon: Zap, label: 'Automatización' },
+                                    { id: 'analytics', icon: BarChart3, label: 'Análisis' },
+                                    { id: 'settings', icon: Settings, label: 'Configuración' }
+                                ].map((item) => {
+                                    const ItemIcon = item.icon;
+                                    return (
+                                        <button
+                                            key={item.id}
+                                            onClick={() => setCurrentView(item.id)}
+                                            className={`w-full flex items-center px-3 py-2 rounded-lg transition ${
+                                                currentView === item.id
+                                                    ? 'bg-indigo-50 text-indigo-600'
+                                                    : 'text-gray-600 hover:bg-gray-50'
+                                            }`}
+                                        >
+                                            <ItemIcon className="w-5 h-5" />
+                                            {sidebarOpen && <span className="ml-3">{item.label}</span>}
+                                        </button>
+                                    );
+                                })}
+                            </nav>
+
+                            <div className="p-4 border-t border-gray-200">
+                                <div className="flex items-center">
+                                    <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
+                                        <User className="w-5 h-5 text-gray-600" />
+                                    </div>
+                                    {sidebarOpen && (
+                                        <div className="ml-3 flex-1">
+                                            <div className="text-sm font-semibold text-gray-900">Admin</div>
+                                            <div className="text-xs text-gray-500">Demo User</div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </aside>
+
+                    {/* Main Content */}
+                    <div className="flex-1 flex flex-col overflow-hidden">
+                        {/* Header */}
+                        <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6">
+                            <div className="flex items-center gap-4">
+                                <h1 className="text-xl font-bold text-gray-900">
+                                    {currentView === 'empresas' && 'Gestión de Empresas'}
+                                    {currentView === 'dashboard' && 'Dashboard Ejecutivo'}
+                                    {currentView === 'download' && 'Centro de Descargas'}
+                                    {currentView === 'files' && 'Gestor de Archivos'}
+                                    {currentView === 'automation' && 'Automatización'}
+                                    {currentView === 'analytics' && 'Análisis y Reportes'}
+                                    {currentView === 'settings' && 'Configuración'}
+                                </h1>
+
+                                <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium ${
+                                    isOnline ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                                }`}>
+                                    {isOnline ? (
+                                        <>
+                                            <Wifi className="w-3 h-3" />
+                                            Online
+                                        </>
+                                    ) : (
+                                        <>
+                                            <WifiOff className="w-3 h-3" />
+                                            Offline
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-4">
+                                <CompanySwitcher />
+
+                                <button
+                                    onClick={() => setShowCommandPalette(true)}
+                                    className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm transition"
+                                >
+                                    <Command className="w-4 h-4" />
+                                    <span className="hidden md:inline">Comandos</span>
+                                    <kbd className="hidden md:inline px-2 py-1 bg-white rounded text-xs">⌘K</kbd>
+                                </button>
+
+                                <button className="relative p-2 hover:bg-gray-100 rounded-lg transition">
+                                    <Bell className="w-5 h-5 text-gray-600" />
+                                    {notifications.length > 0 && (
+                                        <span className="absolute top-0 right-0 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+                                            {notifications.length}
+                                        </span>
+                                    )}
+                                </button>
+                            </div>
+                        </header>
+
+                        {/* Notifications */}
+                        <div className="fixed top-20 right-6 z-40 space-y-2">
+                            {notifications.map((notification) => (
+                                <div
+                                    key={notification.id}
+                                    className={`bg-white rounded-lg shadow-lg border-l-4 p-4 flex items-start gap-3 animate-slide-in ${
+                                        notification.type === 'success' ? 'border-green-500' :
+                                        notification.type === 'error' ? 'border-red-500' :
+                                        notification.type === 'warning' ? 'border-yellow-500' :
+                                        'border-blue-500'
+                                    }`}
+                                >
+                                    {notification.type === 'success' && <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" />}
+                                    {notification.type === 'error' && <X className="w-5 h-5 text-red-500 flex-shrink-0" />}
+                                    {notification.type === 'info' && <AlertCircle className="w-5 h-5 text-blue-500 flex-shrink-0" />}
+                                    <div className="flex-1">
+                                        <p className="text-sm font-medium text-gray-900">{notification.message}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Content */}
+                        <main className="flex-1 overflow-y-auto p-6">
+                            {currentView === 'empresas' && (
+                                <CompanyManagerView onAddEmpresa={() => setShowAddEmpresaModal(true)} />
+                            )}
+
+                            {currentView === 'dashboard' && (
+                                <div className="space-y-6">
+                                    {/* Stats Grid */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                        <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl shadow-lg p-6 text-white">
+                                            <div className="flex items-center justify-between mb-4">
+                                                <TrendingUp className="w-10 h-10 opacity-80" />
+                                                <DollarSign className="w-6 h-6 opacity-60" />
+                                            </div>
+                                            <div className="text-3xl font-bold mb-1">{formatCurrency(stats.ingresos)}</div>
+                                            <div className="text-green-100 text-sm">Ingresos (Emitidos)</div>
+                                        </div>
+
+                                        <div className="bg-gradient-to-br from-red-500 to-orange-600 rounded-xl shadow-lg p-6 text-white">
+                                            <div className="flex items-center justify-between mb-4">
+                                                <FileText className="w-10 h-10 opacity-80" />
+                                                <DollarSign className="w-6 h-6 opacity-60" />
+                                            </div>
+                                            <div className="text-3xl font-bold mb-1">{formatCurrency(stats.deducciones)}</div>
+                                            <div className="text-orange-100 text-sm">Deducciones (Recibidos)</div>
+                                        </div>
+
+                                        <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl shadow-lg p-6 text-white">
+                                            <div className="flex items-center justify-between mb-4">
+                                                <BarChart3 className="w-10 h-10 opacity-80" />
+                                                <TrendingUp className="w-6 h-6 opacity-60" />
+                                            </div>
+                                            <div className="text-3xl font-bold mb-1">{formatCurrency(stats.ivaACargo)}</div>
+                                            <div className="text-blue-100 text-sm">IVA a Cargo</div>
+                                        </div>
+
+                                        <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl shadow-lg p-6 text-white">
+                                            <div className="flex items-center justify-between mb-4">
+                                                <BarChart3 className="w-10 h-10 opacity-80" />
+                                                <CheckCircle2 className="w-6 h-6 opacity-60" />
+                                            </div>
+                                            <div className="text-3xl font-bold mb-1">{formatCurrency(stats.ivaAcreditable)}</div>
+                                            <div className="text-purple-100 text-sm">IVA Acreditable</div>
+                                        </div>
+                                    </div>
+
+                                    {/* Two Column Layout */}
+                                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                        {/* Left Column */}
+                                        <div className="lg:col-span-2 space-y-6">
+                                            {/* Proveedores */}
+                                            <div className="bg-white rounded-lg shadow p-6">
+                                                <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">
+                                                    Proveedores
+                                                </h2>
+
+                                                <div className="space-y-3">
+                                                    {(() => {
+                                                        const proveedores = [
+                                                            { nombre: 'Proveedor Principal SA', rfc: 'ABC123456789', total: 456789.50, count: 234 },
+                                                            { nombre: 'Servicios Corporativos', rfc: 'DEF987654321', total: 234567.80, count: 156 },
+                                                            { nombre: 'Distribuidora XYZ', rfc: 'GHI456789123', total: 178945.30, count: 98 }
+                                                        ];
+                                                        const totalProveedores = proveedores.reduce((sum, e) => sum + e.total, 0);
+
+                                                        return proveedores.map((proveedor, idx) => {
+                                                            const porcentaje = ((proveedor.total / totalProveedores) * 100).toFixed(1);
+                                                            return (
+                                                                <div key={idx} className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                                                                    <div className="flex items-center justify-between mb-2">
+                                                                        <div className="flex-1">
+                                                                            <div className="text-sm font-medium text-gray-900">{proveedor.nombre}</div>
+                                                                            <div className="text-xs text-gray-500 font-mono">{proveedor.rfc}</div>
+                                                                        </div>
+                                                                        <div className="text-right">
+                                                                            <div className="text-sm font-semibold text-gray-900">{formatCurrency(proveedor.total)}</div>
+                                                                            <div className="text-xs font-bold text-gray-600">{porcentaje}%</div>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="w-full bg-gray-200 rounded-full h-1">
+                                                                        <div
+                                                                            className="h-1 rounded-full bg-gray-600 transition-all duration-500"
+                                                                            style={{ width: `${porcentaje}%` }}
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        });
+                                                    })()}
+                                                </div>
+                                            </div>
+
+                                            {/* Clientes */}
+                                            <div className="bg-white rounded-lg shadow p-6">
+                                                <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">
+                                                    Clientes
+                                                </h2>
+
+                                                <div className="space-y-3">
+                                                    {(() => {
+                                                        const clientes = [
+                                                            { nombre: 'Cliente Mayorista SA', rfc: 'CLI123456789', total: 789456.20, count: 345 },
+                                                            { nombre: 'Distribuidora Nacional', rfc: 'CLI987654321', total: 543210.80, count: 287 },
+                                                            { nombre: 'Comercial del Norte', rfc: 'CLI456789123', total: 321098.50, count: 198 }
+                                                        ];
+                                                        const totalClientes = clientes.reduce((sum, c) => sum + c.total, 0);
+
+                                                        return clientes.map((cliente, idx) => {
+                                                            const porcentaje = ((cliente.total / totalClientes) * 100).toFixed(1);
+                                                            return (
+                                                                <div key={idx} className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                                                                    <div className="flex items-center justify-between mb-2">
+                                                                        <div className="flex-1">
+                                                                            <div className="text-sm font-medium text-gray-900">{cliente.nombre}</div>
+                                                                            <div className="text-xs text-gray-500 font-mono">{cliente.rfc}</div>
+                                                                        </div>
+                                                                        <div className="text-right">
+                                                                            <div className="text-sm font-semibold text-gray-900">{formatCurrency(cliente.total)}</div>
+                                                                            <div className="text-xs font-bold text-gray-600">{porcentaje}%</div>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="w-full bg-gray-200 rounded-full h-1">
+                                                                        <div
+                                                                            className="h-1 rounded-full bg-gray-600 transition-all duration-500"
+                                                                            style={{ width: `${porcentaje}%` }}
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        });
+                                                    })()}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Right Column */}
+                                        <div className="space-y-6">
+                                            {/* Recent Activity */}
+                                            <div className="bg-white rounded-xl shadow-lg p-6">
+                                                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                                                    <Activity className="w-5 h-5 mr-2 text-indigo-600" />
+                                                    Actividad Reciente
+                                                </h2>
+
+                                                <div className="space-y-3">
+                                                    {recentActivity.map((activity) => (
+                                                        <div key={activity.id} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                                                            <div className="flex-shrink-0">
+                                                                {activity.type === 'download' && <Download className="w-5 h-5 text-blue-600" />}
+                                                                {activity.type === 'sync' && <RefreshCw className="w-5 h-5 text-green-600" />}
+                                                                {activity.type === 'export' && <FileDown className="w-5 h-5 text-purple-600" />}
+                                                            </div>
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className="text-sm text-gray-900">{activity.description}</p>
+                                                                <p className="text-xs text-gray-500 mt-1">{formatDateTime(activity.timestamp)}</p>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            {/* Upcoming Syncs */}
+                                            <div className="bg-white rounded-xl shadow-lg p-6">
+                                                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                                                    <Calendar className="w-5 h-5 mr-2 text-indigo-600" />
+                                                    Próximas Sincronizaciones
+                                                </h2>
+
+                                                <div className="space-y-3">
+                                                    {upcomingSyncs.map((sync) => (
+                                                        <div key={sync.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                                            <div>
+                                                                <div className="font-medium text-gray-900">{sync.name}</div>
+                                                                <div className="text-sm text-gray-500">{formatDateTime(sync.nextRun)}</div>
+                                                            </div>
+                                                            <Clock className="w-5 h-5 text-gray-400" />
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            {/* Quick Actions */}
+                                            <div className="bg-white rounded-xl shadow-lg p-6">
+                                                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                                                    <Zap className="w-5 h-5 mr-2 text-indigo-600" />
+                                                    Acciones Rápidas
+                                                </h2>
+
+                                                <div className="space-y-2">
+                                                    <button
+                                                        onClick={() => addNotification('Sincronización iniciada', 'success')}
+                                                        className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition flex items-center justify-center"
+                                                    >
+                                                        <RefreshCw className="w-4 h-4 mr-2" />
+                                                        Sincronizar Ahora
+                                                    </button>
+
+                                                    <button
+                                                        onClick={() => addNotification('Generando reporte...', 'info')}
+                                                        className="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition flex items-center justify-center"
+                                                    >
+                                                        <FileDown className="w-4 h-4 mr-2" />
+                                                        Exportar Mes
+                                                    </button>
+
+                                                    <button
+                                                        onClick={() => addNotification('Creando respaldo...', 'info')}
+                                                        className="w-full py-3 px-4 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition flex items-center justify-center"
+                                                    >
+                                                        <Archive className="w-4 h-4 mr-2" />
+                                                        Crear Backup
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {currentView === 'download' && (
+                                <div className="max-w-4xl mx-auto space-y-6">
+                                    {/* Title Section */}
+                                    <div className="bg-white rounded-lg shadow p-6">
+                                        <h2 className="text-2xl font-bold text-gray-900 mb-2">Centro de Descargas</h2>
+                                        <p className="text-gray-600">Selecciona el tipo de facturas que deseas descargar</p>
+                                    </div>
+
+                                    {/* Download Options */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        {/* Facturas Emitidas */}
+                                        <div className="bg-white rounded-lg shadow-lg p-8 hover:shadow-xl transition">
+                                            <div className="flex flex-col items-center text-center">
+                                                <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-6">
+                                                    <TrendingUp className="w-10 h-10 text-green-600" />
+                                                </div>
+                                                <h3 className="text-xl font-bold text-gray-900 mb-3">
+                                                    DESCARGAR FACTURAS EMITIDAS
+                                                </h3>
+                                                <p className="text-sm text-gray-600 mb-6">
+                                                    Ingresos y Nómina - Facturas que ha emitido la empresa
+                                                </p>
+                                                <button
+                                                    onClick={() => {
+                                                        setDownloadType('emitidas');
+                                                        if (!satSession) {
+                                                            setShowAuthModal(true);
+                                                        } else {
+                                                            setShowDownloadModal(true);
+                                                        }
+                                                    }}
+                                                    className="w-full py-3 px-6 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition flex items-center justify-center gap-2"
+                                                >
+                                                    <Download className="w-5 h-5" />
+                                                    Descargar Emitidas
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Facturas Recibidas */}
+                                        <div className="bg-white rounded-lg shadow-lg p-8 hover:shadow-xl transition">
+                                            <div className="flex flex-col items-center text-center">
+                                                <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mb-6">
+                                                    <FileText className="w-10 h-10 text-red-600" />
+                                                </div>
+                                                <h3 className="text-xl font-bold text-gray-900 mb-3">
+                                                    DESCARGAR FACTURAS RECIBIDAS
+                                                </h3>
+                                                <p className="text-sm text-gray-600 mb-6">
+                                                    Deducciones - Facturas que ha recibido la empresa
+                                                </p>
+                                                <button
+                                                    onClick={() => {
+                                                        setDownloadType('recibidas');
+                                                        if (!satSession) {
+                                                            setShowAuthModal(true);
+                                                        } else {
+                                                            setShowDownloadModal(true);
+                                                        }
+                                                    }}
+                                                    className="w-full py-3 px-6 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition flex items-center justify-center gap-2"
+                                                >
+                                                    <Download className="w-5 h-5" />
+                                                    Descargar Recibidas
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Info Section */}
+                                    <div className="bg-gray-50 rounded-lg shadow p-6">
+                                        <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
+                                            Información
+                                        </h4>
+                                        <div className="space-y-2 text-sm text-gray-600">
+                                            <p>• Las facturas emitidas representan sus ingresos y nómina</p>
+                                            <p>• Las facturas recibidas representan sus deducciones y gastos</p>
+                                            <p>• Los archivos se descargarán en formato XML</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {currentView !== 'dashboard' && currentView !== 'empresas' && currentView !== 'download' && (
+                                <div className="bg-white rounded-xl shadow-lg p-12 text-center">
+                                    <div className="max-w-md mx-auto">
+                                        <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                            {currentView === 'files' && <FileText className="w-8 h-8 text-gray-400" />}
+                                            {currentView === 'automation' && <Zap className="w-8 h-8 text-gray-400" />}
+                                            {currentView === 'analytics' && <BarChart3 className="w-8 h-8 text-gray-400" />}
+                                            {currentView === 'settings' && <Settings className="w-8 h-8 text-gray-400" />}
+                                        </div>
+                                        <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                                            {currentView === 'files' && 'Gestor de Archivos'}
+                                            {currentView === 'automation' && 'Automatización'}
+                                            {currentView === 'analytics' && 'Análisis y Reportes'}
+                                            {currentView === 'settings' && 'Configuración'}
+                                        </h3>
+                                        <p className="text-gray-600 mb-6">
+                                            Esta vista integraría el componente correspondiente del sistema.
+                                        </p>
+                                        <button
+                                            onClick={() => setCurrentView('dashboard')}
+                                            className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition"
+                                        >
+                                            Volver al Dashboard
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </main>
+                    </div>
+
+                    {/* Floating Action Button */}
+                    <div className="fixed bottom-6 right-6 z-30">
+                        {showFloatingMenu && (
+                            <div className="absolute bottom-16 right-0 bg-white rounded-xl shadow-2xl p-2 space-y-1 min-w-[200px]">
+                                <button
+                                    onClick={() => {
+                                        addNotification('Descarga rápida iniciada', 'info');
+                                        setShowFloatingMenu(false);
+                                    }}
+                                    className="w-full px-4 py-3 text-left hover:bg-gray-50 rounded-lg transition flex items-center"
+                                >
+                                    <Download className="w-5 h-5 text-gray-600 mr-3" />
+                                    <span className="text-sm text-gray-900">Descarga rápida</span>
+                                </button>
+                            </div>
+                        )}
+
+                        <button
+                            onClick={() => setShowFloatingMenu(!showFloatingMenu)}
+                            className="w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-lg flex items-center justify-center transition-transform hover:scale-110"
+                        >
+                            {showFloatingMenu ? <X className="w-6 h-6" /> : <Plus className="w-6 h-6" />}
+                        </button>
+                    </div>
+
+                    <CommandPalette
+                        isOpen={showCommandPalette}
+                        onClose={() => setShowCommandPalette(false)}
+                        onCommand={handleCommand}
+                    />
+
+                    {/* Auth Modal */}
+                    {showAuthModal && (
+                        <AuthModal
+                            isOpen={showAuthModal}
+                            onClose={() => setShowAuthModal(false)}
+                            onSuccess={(session) => {
+                                setSatSession(session);
+                                setShowAuthModal(false);
+                                setShowDownloadModal(true);
+                                addNotification('Autenticación exitosa', 'success');
+                            }}
+                            addNotification={addNotification}
+                        />
+                    )}
+
+                    {/* Download Modal */}
+                    {showDownloadModal && (
+                        <DownloadModal
+                            isOpen={showDownloadModal}
+                            onClose={() => setShowDownloadModal(false)}
+                            downloadType={downloadType}
+                            satSession={satSession}
+                            addNotification={addNotification}
+                            isDownloading={isDownloading}
+                            setIsDownloading={setIsDownloading}
+                        />
+                    )}
+
+                    {/* Add Empresa Modal */}
+                    <AddEmpresaModal
+                        isOpen={showAddEmpresaModal}
+                        onClose={() => setShowAddEmpresaModal(false)}
+                        addNotification={addNotification}
+                    />
+                </div>
+            );
+        };
+
+        // ============================================================================
+        // COMPANY MANAGER VIEW (Simplified)
+        // ============================================================================
+        const CompanyManagerView = ({ onAddEmpresa }) => {
+            const { empresas, empresaActiva, switchEmpresa, toggleFavorite } = useCompany();
+            const [searchTerm, setSearchTerm] = useState('');
+
+            const filteredEmpresas = empresas.filter(empresa => {
+                if (!searchTerm) return true;
+                const search = searchTerm.toLowerCase();
+                return (
+                    empresa.rfc.toLowerCase().includes(search) ||
+                    empresa.razonSocial?.toLowerCase().includes(search) ||
+                    empresa.nombreCorto?.toLowerCase().includes(search)
+                );
+            });
+
+            return (
+                <div className="space-y-6">
+                    {/* Stats */}
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div className="bg-white rounded-lg shadow p-4">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <div className="text-sm text-gray-600">Total Empresas</div>
+                                    <div className="text-2xl font-bold text-gray-900">{empresas.length}</div>
+                                </div>
+                                <Building2 className="w-10 h-10 text-indigo-500" />
+                            </div>
+                        </div>
+
+                        <div className="bg-white rounded-lg shadow p-4">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <div className="text-sm text-gray-600">Activas</div>
+                                    <div className="text-2xl font-bold text-green-600">
+                                        {empresas.filter(e => e.status === 'active').length}
+                                    </div>
+                                </div>
+                                <CheckCircle2 className="w-10 h-10 text-green-500" />
+                            </div>
+                        </div>
+
+                        <div className="bg-white rounded-lg shadow p-4">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <div className="text-sm text-gray-600">Ingresos</div>
+                                    <div className="text-2xl font-bold text-gray-900">
+                                        ${empresas.reduce((sum, e) => sum + (e.stats?.ingresos || 0), 0).toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                    </div>
+                                </div>
+                                <FileText className="w-10 h-10 text-blue-500" />
+                            </div>
+                        </div>
+
+                        <div className="bg-white rounded-lg shadow p-4">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <div className="text-sm text-gray-600">Deducciones</div>
+                                    <div className="text-2xl font-bold text-gray-900">
+                                        ${empresas.reduce((sum, e) => sum + (e.stats?.deducciones || 0), 0).toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                    </div>
+                                </div>
+                                <HardDrive className="w-10 h-10 text-orange-500" />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Filters */}
+                    <div className="bg-white rounded-lg shadow p-4">
+                        <div className="flex gap-4">
+                            <div className="flex-1 relative">
+                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                                <input
+                                    type="text"
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    placeholder="Buscar por RFC o razón social..."
+                                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                                />
+                            </div>
+
+                            <button
+                                onClick={onAddEmpresa}
+                                className="flex items-center gap-2 px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition shadow-lg hover:shadow-xl"
+                            >
+                                <Plus className="w-5 h-5" />
+                                Agregar Empresa
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Companies List */}
+                    <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+                            <table className="w-full">
+                                <thead className="bg-gray-50 border-b border-gray-200">
+                                    <tr>
+                                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">No.</th>
+                                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">RFC</th>
+                                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Nivel</th>
+                                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Pseudónimo</th>
+                                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">XMLs</th>
+                                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Ingresos</th>
+                                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Deducciones</th>
+                                        <th className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-200">
+                                    {filteredEmpresas.map((empresa, index) => {
+                                        const isActive = empresaActiva?.rfc === empresa.rfc;
+                                        return (
+                                            <tr key={empresa.rfc} className={`hover:bg-gray-50 ${isActive ? 'bg-indigo-50' : ''}`}>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-sm font-semibold text-gray-900">{index + 1}</span>
+                                                        {empresa.isFavorite && (
+                                                            <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
+                                                        )}
+                                                        {isActive && (
+                                                            <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-xs rounded-full">
+                                                                ACTIVA
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className="font-mono text-sm text-gray-900">{empresa.rfc}</span>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className="text-sm font-semibold text-gray-900">
+                                                        {empresa.nivel}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className="text-sm text-gray-900">
+                                                        {empresa.pseudonimo}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className="text-sm font-semibold text-gray-900">
+                                                        {empresa.stats?.totalXMLs?.toLocaleString() || '0'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className="text-sm font-semibold text-green-600">
+                                                        ${empresa.stats?.ingresos?.toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2}) || '0.00'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className="text-sm font-semibold text-red-600">
+                                                        ${empresa.stats?.deducciones?.toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2}) || '0.00'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex items-center justify-end gap-2">
+                                                        <button
+                                                            onClick={() => switchEmpresa(empresa.rfc)}
+                                                            disabled={isActive}
+                                                            className={`px-3 py-1 rounded text-sm font-medium transition ${
+                                                                isActive
+                                                                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                                                    : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                                                            }`}
+                                                        >
+                                                            {isActive ? 'Activa' : 'Activar'}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => toggleFavorite(empresa.rfc)}
+                                                            className="p-2 hover:bg-gray-100 rounded transition"
+                                                        >
+                                                            <Star className={`w-4 h-4 ${empresa.isFavorite ? 'text-yellow-500 fill-yellow-500' : 'text-gray-600'}`} />
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                </div>
+            );
+        };
+
+        // ============================================================================
+        // MAIN APP
+        // ============================================================================
+        const App = () => {
+            return (
+                <CompanyProvider>
+                    <NBKMasterDashboard />
+                </CompanyProvider>
+            );
+        };
+
+        // Hide loading screen and render app
+        setTimeout(() => {
+            document.getElementById('loading-screen').classList.add('fade-out');
+            setTimeout(() => {
+                document.getElementById('loading-screen').style.display = 'none';
+            }, 500);
+        }, 2000);
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
