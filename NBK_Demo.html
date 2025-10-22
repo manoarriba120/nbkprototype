@@ -145,6 +145,13 @@
             </Icon>
         );
 
+        const Edit2 = (props) => (
+            <Icon {...props}>
+                <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                <path d="m15 5 4 4" />
+            </Icon>
+        );
+
         const Home = (props) => (
             <Icon {...props}>
                 <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
@@ -440,105 +447,28 @@
         };
 
         const CompanyProvider = ({ children }) => {
-            const [empresas, setEmpresas] = useState([
-                {
-                    id: '1',
-                    rfc: 'XAXX010101000',
-                    razonSocial: 'Empresa Demo SA de CV',
-                    nombreCorto: 'Empresa Demo',
-                    pseudonimo: 'Demo Corp',
-                    nivel: 'Premium',
-                    regimen: '601 - General de Ley',
-                    status: 'active',
-                    isFavorite: true,
-                    storage: {
-                        used: 2345678900,
-                        limit: 10737418240,
-                        lastSync: new Date().toISOString()
-                    },
-                    stats: {
-                        totalXMLs: 1247,
-                        xmlsThisMonth: 156,
-                        totalEmitidos: 980,
-                        totalRecibidos: 267,
-                        ingresos: 15750000.50,
-                        deducciones: 3250000.75
-                    },
-                    autoSync: {
-                        enabled: true,
-                        frequency: 'daily',
-                        lastRun: new Date().toISOString()
-                    },
-                    fielConfig: {
-                        expirationDate: '2025-12-31'
-                    }
-                },
-                {
-                    id: '2',
-                    rfc: 'ABC123456789',
-                    razonSocial: 'Otra Empresa SA de CV',
-                    nombreCorto: 'Otra Empresa',
-                    pseudonimo: 'OtraEmp',
-                    nivel: 'Básico',
-                    regimen: '601 - General de Ley',
-                    status: 'active',
-                    isFavorite: false,
-                    storage: {
-                        used: 1234567890,
-                        limit: 10737418240,
-                        lastSync: new Date().toISOString()
-                    },
-                    stats: {
-                        totalXMLs: 856,
-                        xmlsThisMonth: 89,
-                        totalEmitidos: 654,
-                        totalRecibidos: 202,
-                        ingresos: 8500000.00,
-                        deducciones: 1750000.25
-                    },
-                    autoSync: {
-                        enabled: true,
-                        frequency: 'weekly'
-                    },
-                    fielConfig: {
-                        expirationDate: '2024-03-15'
-                    }
-                },
-                {
-                    id: '3',
-                    rfc: 'DEF987654321',
-                    razonSocial: 'Cliente Principal SA',
-                    nombreCorto: 'Cliente Principal',
-                    pseudonimo: 'ClientePrin',
-                    nivel: 'Enterprise',
-                    regimen: '601 - General de Ley',
-                    status: 'active',
-                    isFavorite: true,
-                    storage: {
-                        used: 5432198760,
-                        limit: 10737418240,
-                        lastSync: new Date().toISOString()
-                    },
-                    stats: {
-                        totalXMLs: 2145,
-                        xmlsThisMonth: 203,
-                        totalEmitidos: 1567,
-                        totalRecibidos: 578,
-                        ingresos: 25000000.00,
-                        deducciones: 5200000.50
-                    },
-                    autoSync: {
-                        enabled: false,
-                        frequency: 'monthly'
-                    },
-                    fielConfig: {
-                        expirationDate: '2025-06-30'
-                    }
-                }
-            ]);
+            const [empresas, setEmpresas] = useState([]);
+            const [empresaActiva, setEmpresaActiva] = useState(null);
+            const [loading, setLoading] = useState(true);
 
-            const [empresaActiva, setEmpresaActiva] = useState(empresas[0]);
-            const [loading, setLoading] = useState(false);
+            // Cargar empresas desde la API al inicializar
+            useEffect(() => {
+                const loadEmpresas = async () => {
+                    setLoading(true);
+                    try {
+                        const result = await api.getCompanies();
+                        if (result.success && result.companies.length > 0) {
+                            setEmpresas(result.companies);
+                            setEmpresaActiva(result.companies[0]);
+                        }
+                    } catch (error) {
+                        console.error('Error cargando empresas:', error);
+                    } finally {
+                        setLoading(false);
+                    }
+                };
+                loadEmpresas();
+            }, []);
 
             const switchEmpresa = useCallback((rfc) => {
                 const empresa = empresas.find(e => e.rfc === rfc);
@@ -553,13 +483,30 @@
                 ));
             }, []);
 
+            const reloadEmpresas = useCallback(async () => {
+                setLoading(true);
+                try {
+                    const result = await api.getCompanies();
+                    if (result.success && result.companies.length > 0) {
+                        setEmpresas(result.companies);
+                        if (!empresaActiva || !result.companies.find(e => e.rfc === empresaActiva.rfc)) {
+                            setEmpresaActiva(result.companies[0]);
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error recargando empresas:', error);
+                } finally {
+                    setLoading(false);
+                }
+            }, [empresaActiva]);
+
             const value = {
                 empresas,
                 empresaActiva,
                 loading,
                 switchEmpresa,
                 toggleFavorite,
-                reloadEmpresas: () => {}
+                reloadEmpresas
             };
 
             return (
@@ -746,7 +693,7 @@
                                                     {empresa.rfc}
                                                 </div>
                                                 <div className="text-xs text-gray-400">
-                                                    {empresa.stats.totalXMLs.toLocaleString()} XMLs • {formatBytes(empresa.storage.used)}
+                                                    {empresa.stats?.totalXMLs?.toLocaleString() || 0} XMLs • Nivel {empresa.nivel}
                                                 </div>
                                             </div>
                                             {empresaActiva?.rfc === empresa.rfc && (
@@ -784,7 +731,7 @@
                                                     {empresa.rfc}
                                                 </div>
                                                 <div className="text-xs text-gray-400">
-                                                    {empresa.stats.totalXMLs.toLocaleString()} XMLs • {formatBytes(empresa.storage.used)}
+                                                    {empresa.stats?.totalXMLs?.toLocaleString() || 0} XMLs • Nivel {empresa.nivel}
                                                 </div>
                                             </div>
                                         </button>
@@ -1003,10 +950,16 @@
                     const result = await downloadFunction(fechaInicio, fechaFin);
 
                     if (result.success) {
-                        addNotification(`Descarga completada: ${result.facturas?.length || 0} facturas`, 'success');
-                        if (result.downloadUrl) {
-                            api.downloadFile(result.zipFile);
+                        const totalFacturas = result.archivosDescargados || result.numeroCFDIs || 0;
+                        const mensaje = `Descarga completada: ${totalFacturas} facturas descargadas`;
+
+                        if (result.clasificacion) {
+                            const { vigentes, cancelados } = result.clasificacion;
+                            addNotification(`${mensaje}. Vigentes: ${vigentes}, Canceladas: ${cancelados}`, 'success');
+                        } else {
+                            addNotification(mensaje, 'success');
                         }
+
                         onClose();
                     } else {
                         addNotification(result.error || 'Error al descargar facturas', 'error');
@@ -1037,7 +990,7 @@
                         <div className="p-6 space-y-6">
                             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                                 <p className="text-sm text-blue-800">
-                                    <strong>RFC:</strong> {satSession?.rfc || 'No disponible'}
+                                    <strong>RFC:</strong> {satSession?.session?.rfc || 'No disponible'}
                                 </p>
                             </div>
 
@@ -1113,7 +1066,7 @@
                 formData.append('key', keyFile);
                 formData.append('password', password);
 
-                const response = await fetch(`${API_BASE_URL}/auth/login-efirma`, {
+                const response = await fetch(`${API_BASE_URL}/auth-ws/login-efirma`, {
                     method: 'POST',
                     body: formData
                 });
@@ -1121,31 +1074,43 @@
             },
 
             async getSession() {
-                const response = await fetch(`${API_BASE_URL}/auth/session`);
+                const response = await fetch(`${API_BASE_URL}/auth-ws/session`);
                 return await response.json();
             },
 
             async logout() {
-                const response = await fetch(`${API_BASE_URL}/auth/logout`, {
+                const response = await fetch(`${API_BASE_URL}/auth-ws/logout`, {
                     method: 'POST'
                 });
                 return await response.json();
             },
 
             async downloadEmitidas(fechaInicio, fechaFin) {
-                const response = await fetch(`${API_BASE_URL}/download/emitidas`, {
+                const response = await fetch(`${API_BASE_URL}/download-ws/emitidas`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ fechaInicio, fechaFin, formato: 'zip' })
+                    body: JSON.stringify({
+                        fechaInicio,
+                        fechaFin,
+                        clasificar: true,
+                        verificarEstado: false,
+                        guardarRespaldo: true
+                    })
                 });
                 return await response.json();
             },
 
             async downloadRecibidas(fechaInicio, fechaFin) {
-                const response = await fetch(`${API_BASE_URL}/download/recibidas`, {
+                const response = await fetch(`${API_BASE_URL}/download-ws/recibidas`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ fechaInicio, fechaFin, formato: 'zip' })
+                    body: JSON.stringify({
+                        fechaInicio,
+                        fechaFin,
+                        clasificar: true,
+                        verificarEstado: false,
+                        guardarRespaldo: true
+                    })
                 });
                 return await response.json();
             },
@@ -1154,9 +1119,10 @@
                 window.open(`${API_BASE_URL}/download/file?path=${encodeURIComponent(path)}`, '_blank');
             },
 
-            async extractConstancia(pdfFile) {
+            async extractConstancia(pdfFile, nivel) {
                 const formData = new FormData();
                 formData.append('constancia', pdfFile);
+                formData.append('nivel', nivel);
 
                 const response = await fetch(`${API_BASE_URL}/companies/extract-constancia`, {
                     method: 'POST',
@@ -1172,17 +1138,54 @@
                     body: JSON.stringify(companyData)
                 });
                 return await response.json();
+            },
+
+            async getCompanies() {
+                const response = await fetch(`${API_BASE_URL}/companies`);
+                return await response.json();
+            },
+
+            async updateCompany(rfc, companyData) {
+                const response = await fetch(`${API_BASE_URL}/companies/${rfc}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(companyData)
+                });
+                return await response.json();
             }
         };
 
         // ============================================================================
         // ADD EMPRESA MODAL COMPONENT
         // ============================================================================
-        const AddEmpresaModal = ({ isOpen, onClose, addNotification }) => {
+        const AddEmpresaModal = ({ isOpen, onClose, addNotification, empresaToEdit }) => {
+            const { reloadEmpresas } = useCompany();
             const [extractedData, setExtractedData] = useState(null);
             const [isExtracting, setIsExtracting] = useState(false);
             const [isSaving, setIsSaving] = useState(false);
             const [pdfFile, setPdfFile] = useState(null);
+            const [nivel, setNivel] = useState(empresaToEdit?.nivel || 1);
+            const [pseudonimo, setPseudonimo] = useState(empresaToEdit?.pseudonimo || '');
+
+            // Actualizar cuando cambia empresaToEdit
+            useEffect(() => {
+                if (empresaToEdit) {
+                    setNivel(empresaToEdit.nivel || 1);
+                    setPseudonimo(empresaToEdit.pseudonimo || '');
+                    setExtractedData({
+                        rfc: empresaToEdit.rfc,
+                        razonSocial: empresaToEdit.razonSocial,
+                        regimen: empresaToEdit.regimen,
+                        domicilioFiscal: empresaToEdit.domicilioFiscal,
+                        giro: empresaToEdit.giro
+                    });
+                } else {
+                    setNivel(1);
+                    setPseudonimo('');
+                    setExtractedData(null);
+                    setPdfFile(null);
+                }
+            }, [empresaToEdit]);
 
             const handlePdfUpload = async (event) => {
                 const file = event.target.files[0];
@@ -1193,10 +1196,16 @@
                 addNotification('Procesando PDF...', 'info');
 
                 try {
-                    const result = await api.extractConstancia(file);
+                    const result = await api.extractConstancia(file, nivel);
                     if (result.success) {
                         setExtractedData(result.data);
-                        addNotification('Datos extraídos correctamente', 'success');
+                        if (result.company) {
+                            addNotification('Empresa registrada exitosamente', 'success');
+                            await reloadEmpresas();
+                            onClose();
+                        } else {
+                            addNotification('Datos extraídos correctamente', 'success');
+                        }
                     } else {
                         addNotification(result.error || 'Error al extraer datos del PDF', 'error');
                     }
@@ -1215,12 +1224,22 @@
 
                 setIsSaving(true);
                 try {
-                    const result = await api.addCompany(extractedData);
+                    let result;
+                    if (empresaToEdit) {
+                        // Modo edición
+                        result = await api.updateCompany(empresaToEdit.rfc, {
+                            nivel: nivel,
+                            pseudonimo: pseudonimo || extractedData.razonSocial
+                        });
+                    } else {
+                        // Modo agregar
+                        result = await api.addCompany(extractedData);
+                    }
+
                     if (result.success) {
-                        addNotification('Empresa agregada exitosamente', 'success');
+                        addNotification(empresaToEdit ? 'Empresa actualizada exitosamente' : 'Empresa agregada exitosamente', 'success');
+                        await reloadEmpresas();
                         onClose();
-                        // Recargar la página para mostrar la nueva empresa
-                        window.location.reload();
                     } else {
                         addNotification(result.error || 'Error al guardar la empresa', 'error');
                     }
@@ -1240,7 +1259,7 @@
                             <div className="flex items-center justify-between">
                                 <h2 className="text-2xl font-bold text-gray-900 flex items-center">
                                     <Building2 className="w-6 h-6 mr-3 text-indigo-600" />
-                                    Agregar Nueva Empresa
+                                    {empresaToEdit ? 'Editar Empresa' : 'Agregar Nueva Empresa'}
                                 </h2>
                                 <button
                                     onClick={onClose}
@@ -1386,6 +1405,37 @@
                                         }`}
                                     />
                                 </div>
+
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                                        Pseudónimo (Nombre Personalizado)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={pseudonimo}
+                                        onChange={(e) => setPseudonimo(e.target.value)}
+                                        placeholder={extractedData?.razonSocial || "Nombre personalizado para la empresa"}
+                                        className="w-full px-3 py-2 bg-white border border-gray-300 rounded text-sm text-gray-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1">Este nombre se mostrará en el sistema</p>
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                                        Nivel de la Empresa *
+                                    </label>
+                                    <select
+                                        value={nivel}
+                                        onChange={(e) => setNivel(parseInt(e.target.value))}
+                                        className="w-full px-3 py-2 bg-white border border-indigo-300 rounded text-sm text-gray-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                    >
+                                        <option value={1}>Nivel 1</option>
+                                        <option value={2}>Nivel 2</option>
+                                        <option value={3}>Nivel 3</option>
+                                        <option value={4}>Nivel 4</option>
+                                    </select>
+                                    <p className="text-xs text-gray-500 mt-1">{empresaToEdit ? 'Puede cambiar el nivel de la empresa' : 'Seleccione el nivel antes de cargar el PDF'}</p>
+                                </div>
                             </div>
                         </div>
 
@@ -1396,23 +1446,20 @@
                             >
                                 Cancelar
                             </button>
-                            <button
-                                onClick={handleSaveCompany}
-                                disabled={!extractedData || isSaving}
-                                className="flex-1 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                            >
-                                {isSaving ? (
-                                    <>
-                                        <Loader2 className="w-5 h-5 animate-spin" />
-                                        Guardando...
-                                    </>
-                                ) : (
-                                    <>
-                                        <CheckCircle2 className="w-5 h-5" />
-                                        Agregar Empresa
-                                    </>
-                                )}
-                            </button>
+                            {empresaToEdit && (
+                                <button
+                                    onClick={handleSaveCompany}
+                                    disabled={isSaving}
+                                    className="flex-1 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition disabled:opacity-50"
+                                >
+                                    {isSaving ? 'Guardando...' : 'Guardar Cambios'}
+                                </button>
+                            )}
+                            {extractedData && !empresaToEdit && (
+                                <p className="text-sm text-green-600 text-center mt-3 font-medium">
+                                    La empresa se registró automáticamente
+                                </p>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -1430,6 +1477,7 @@
             const [showCommandPalette, setShowCommandPalette] = useState(false);
             const [showFloatingMenu, setShowFloatingMenu] = useState(false);
             const [showAddEmpresaModal, setShowAddEmpresaModal] = useState(false);
+            const [empresaToEdit, setEmpresaToEdit] = useState(null);
             const [showAuthModal, setShowAuthModal] = useState(false);
             const [showDownloadModal, setShowDownloadModal] = useState(false);
             const [downloadType, setDownloadType] = useState(null);
@@ -1438,38 +1486,29 @@
             const [notifications, setNotifications] = useState([]);
 
             const stats = useMemo(() => {
-                // Calcular ingresos (subtotal de emitidos)
-                const ingresos = 2456789.50;
+                // Usar datos reales de la empresa activa
+                const ingresos = empresaActiva?.stats?.ingresos || 0;
                 const ivaACargo = ingresos * 0.16; // 16% del subtotal
 
-                // Calcular deducciones (subtotal de recibidos)
-                const deducciones = 1234567.80;
+                const deducciones = empresaActiva?.stats?.deducciones || 0;
                 const ivaAcreditable = deducciones * 0.16; // 16% del subtotal
 
                 return {
                     totalXMLs: empresaActiva?.stats?.totalXMLs || 0,
-                    storageUsed: empresaActiva?.storage?.used || 0,
-                    storageLimit: empresaActiva?.storage?.limit || 10737418240,
-                    lastSync: empresaActiva?.storage?.lastSync,
+                    storageUsed: 0,
+                    storageLimit: 10737418240,
+                    lastSync: empresaActiva?.createdAt,
                     xmlsThisMonth: empresaActiva?.stats?.xmlsThisMonth || 0,
                     ingresos: ingresos,
                     ivaACargo: ivaACargo,
                     deducciones: deducciones,
                     ivaAcreditable: ivaAcreditable,
-                    downloadSpeed: 45.2
+                    downloadSpeed: 0
                 };
             }, [empresaActiva]);
 
-            const [recentActivity] = useState([
-                { id: 1, type: 'download', description: 'Descargados 45 XMLs de Enero 2024', timestamp: new Date(Date.now() - 30 * 60 * 1000).toISOString() },
-                { id: 2, type: 'sync', description: 'Sincronización automática completada', timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() },
-                { id: 3, type: 'export', description: 'Exportación a Excel generada', timestamp: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString() }
-            ]);
-
-            const [upcomingSyncs] = useState([
-                { id: 1, name: 'Sync Diario', nextRun: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString() },
-                { id: 2, name: 'Backup Semanal', nextRun: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString() }
-            ]);
+            const [recentActivity] = useState([]);
+            const [upcomingSyncs] = useState([]);
 
             useEffect(() => {
                 const handleKeyDown = (e) => {
@@ -1660,7 +1699,10 @@
                         {/* Content */}
                         <main className="flex-1 overflow-y-auto p-6">
                             {currentView === 'empresas' && (
-                                <CompanyManagerView onAddEmpresa={() => setShowAddEmpresaModal(true)} />
+                                <CompanyManagerView onAddEmpresa={(empresa) => {
+                                    setEmpresaToEdit(empresa || null);
+                                    setShowAddEmpresaModal(true);
+                                }} />
                             )}
 
                             {currentView === 'dashboard' && (
@@ -1715,38 +1757,10 @@
                                                 </h2>
 
                                                 <div className="space-y-3">
-                                                    {(() => {
-                                                        const proveedores = [
-                                                            { nombre: 'Proveedor Principal SA', rfc: 'ABC123456789', total: 456789.50, count: 234 },
-                                                            { nombre: 'Servicios Corporativos', rfc: 'DEF987654321', total: 234567.80, count: 156 },
-                                                            { nombre: 'Distribuidora XYZ', rfc: 'GHI456789123', total: 178945.30, count: 98 }
-                                                        ];
-                                                        const totalProveedores = proveedores.reduce((sum, e) => sum + e.total, 0);
-
-                                                        return proveedores.map((proveedor, idx) => {
-                                                            const porcentaje = ((proveedor.total / totalProveedores) * 100).toFixed(1);
-                                                            return (
-                                                                <div key={idx} className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                                                                    <div className="flex items-center justify-between mb-2">
-                                                                        <div className="flex-1">
-                                                                            <div className="text-sm font-medium text-gray-900">{proveedor.nombre}</div>
-                                                                            <div className="text-xs text-gray-500 font-mono">{proveedor.rfc}</div>
-                                                                        </div>
-                                                                        <div className="text-right">
-                                                                            <div className="text-sm font-semibold text-gray-900">{formatCurrency(proveedor.total)}</div>
-                                                                            <div className="text-xs font-bold text-gray-600">{porcentaje}%</div>
-                                                                        </div>
-                                                                    </div>
-                                                                    <div className="w-full bg-gray-200 rounded-full h-1">
-                                                                        <div
-                                                                            className="h-1 rounded-full bg-gray-600 transition-all duration-500"
-                                                                            style={{ width: `${porcentaje}%` }}
-                                                                        />
-                                                                    </div>
-                                                                </div>
-                                                            );
-                                                        });
-                                                    })()}
+                                                    <div className="text-center py-8 text-gray-500">
+                                                        <p className="text-sm">No hay datos de proveedores disponibles</p>
+                                                        <p className="text-xs mt-1">Descarga facturas recibidas para ver tus proveedores</p>
+                                                    </div>
                                                 </div>
                                             </div>
 
@@ -1757,38 +1771,10 @@
                                                 </h2>
 
                                                 <div className="space-y-3">
-                                                    {(() => {
-                                                        const clientes = [
-                                                            { nombre: 'Cliente Mayorista SA', rfc: 'CLI123456789', total: 789456.20, count: 345 },
-                                                            { nombre: 'Distribuidora Nacional', rfc: 'CLI987654321', total: 543210.80, count: 287 },
-                                                            { nombre: 'Comercial del Norte', rfc: 'CLI456789123', total: 321098.50, count: 198 }
-                                                        ];
-                                                        const totalClientes = clientes.reduce((sum, c) => sum + c.total, 0);
-
-                                                        return clientes.map((cliente, idx) => {
-                                                            const porcentaje = ((cliente.total / totalClientes) * 100).toFixed(1);
-                                                            return (
-                                                                <div key={idx} className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                                                                    <div className="flex items-center justify-between mb-2">
-                                                                        <div className="flex-1">
-                                                                            <div className="text-sm font-medium text-gray-900">{cliente.nombre}</div>
-                                                                            <div className="text-xs text-gray-500 font-mono">{cliente.rfc}</div>
-                                                                        </div>
-                                                                        <div className="text-right">
-                                                                            <div className="text-sm font-semibold text-gray-900">{formatCurrency(cliente.total)}</div>
-                                                                            <div className="text-xs font-bold text-gray-600">{porcentaje}%</div>
-                                                                        </div>
-                                                                    </div>
-                                                                    <div className="w-full bg-gray-200 rounded-full h-1">
-                                                                        <div
-                                                                            className="h-1 rounded-full bg-gray-600 transition-all duration-500"
-                                                                            style={{ width: `${porcentaje}%` }}
-                                                                        />
-                                                                    </div>
-                                                                </div>
-                                                            );
-                                                        });
-                                                    })()}
+                                                    <div className="text-center py-8 text-gray-500">
+                                                        <p className="text-sm">No hay datos de clientes disponibles</p>
+                                                        <p className="text-xs mt-1">Descarga facturas emitidas para ver tus clientes</p>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
@@ -2052,7 +2038,11 @@
                     {/* Add Empresa Modal */}
                     <AddEmpresaModal
                         isOpen={showAddEmpresaModal}
-                        onClose={() => setShowAddEmpresaModal(false)}
+                        onClose={() => {
+                            setShowAddEmpresaModal(false);
+                            setEmpresaToEdit(null);
+                        }}
+                        empresaToEdit={empresaToEdit}
                         addNotification={addNotification}
                     />
                 </div>
@@ -2224,6 +2214,13 @@
                                                             }`}
                                                         >
                                                             {isActive ? 'Activa' : 'Activar'}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => onAddEmpresa(empresa)}
+                                                            className="p-2 hover:bg-gray-100 rounded transition text-gray-600"
+                                                            title="Editar empresa"
+                                                        >
+                                                            <Edit2 className="w-4 h-4" />
                                                         </button>
                                                         <button
                                                             onClick={() => toggleFavorite(empresa.rfc)}

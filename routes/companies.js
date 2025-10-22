@@ -80,13 +80,16 @@ router.post('/', async (req, res) => {
         // Verificar si ya existe
         const existingIndex = data.companies.findIndex(c => c.rfc === rfc);
 
+        // Validar que el nivel sea 1, 2, 3 o 4
+        const nivelValido = [1, 2, 3, 4].includes(parseInt(nivel)) ? parseInt(nivel) : 1;
+
         const newCompany = {
             id: Date.now().toString(),
             rfc,
             razonSocial,
             nombreCorto: nombreCorto || razonSocial,
             pseudonimo: pseudonimo || nombreCorto || razonSocial,
-            nivel: nivel || 'Básico',
+            nivel: nivelValido,
             regimen: regimen || '',
             domicilioFiscal: domicilioFiscal || '',
             giro: giro || '',
@@ -242,18 +245,81 @@ router.post('/extract-constancia', upload.single('constancia'), async (req, res)
         console.log(`[PDF Extractor] Extracción exitosa en ${processingTime}ms`);
         console.log(`[PDF Extractor] Campos extraídos: ${extractionResult.metadata.extractedFields.join(', ')}`);
 
-        // 7. Devolver datos extraídos
+        // 7. Registrar empresa automáticamente si se proporciona el nivel
+        const { nivel } = req.body;
+        let registeredCompany = null;
+
+        if (nivel && extractionResult.data.rfc) {
+            try {
+                // Validar que el nivel sea 1, 2, 3 o 4
+                const nivelValido = [1, 2, 3, 4].includes(parseInt(nivel)) ? parseInt(nivel) : 1;
+
+                // Leer datos existentes
+                let companiesData = { companies: [] };
+                const dbExists = await fs.pathExists(DB_PATH);
+                if (dbExists) {
+                    companiesData = await fs.readJSON(DB_PATH);
+                }
+
+                // Verificar si ya existe
+                const existingIndex = companiesData.companies.findIndex(c => c.rfc === extractionResult.data.rfc);
+
+                const newCompany = {
+                    id: Date.now().toString(),
+                    rfc: extractionResult.data.rfc,
+                    razonSocial: extractionResult.data.razonSocial || extractionResult.data.nombre,
+                    nombreCorto: extractionResult.data.nombre || extractionResult.data.razonSocial,
+                    pseudonimo: extractionResult.data.nombre || extractionResult.data.razonSocial,
+                    nivel: nivelValido,
+                    regimen: extractionResult.data.regimen || '',
+                    domicilioFiscal: extractionResult.data.domicilio || '',
+                    giro: extractionResult.data.actividad || '',
+                    status: 'active',
+                    isFavorite: false,
+                    createdAt: new Date().toISOString(),
+                    stats: {
+                        totalXMLs: 0,
+                        xmlsThisMonth: 0,
+                        totalEmitidos: 0,
+                        totalRecibidos: 0,
+                        ingresos: 0,
+                        deducciones: 0
+                    }
+                };
+
+                if (existingIndex >= 0) {
+                    companiesData.companies[existingIndex] = { ...companiesData.companies[existingIndex], ...newCompany };
+                    console.log(`[PDF Extractor] Empresa actualizada: ${newCompany.rfc}`);
+                } else {
+                    companiesData.companies.push(newCompany);
+                    console.log(`[PDF Extractor] Empresa registrada: ${newCompany.rfc}`);
+                }
+
+                // Guardar
+                await fs.writeJSON(DB_PATH, companiesData, { spaces: 2 });
+                registeredCompany = newCompany;
+
+            } catch (regError) {
+                console.error('[PDF Extractor] Error registrando empresa:', regError);
+            }
+        }
+
+        // 8. Devolver datos extraídos y empresa registrada
         res.json({
             success: true,
             data: extractionResult.data,
+            company: registeredCompany,
             metadata: {
                 fileName,
                 fileSize: req.file.size,
                 processingTime: `${processingTime}ms`,
                 extractedFields: extractionResult.metadata.extractedFields,
-                isCSF: extractionResult.metadata.isCSF
+                isCSF: extractionResult.metadata.isCSF,
+                registered: !!registeredCompany
             },
-            message: 'Datos extraídos correctamente de la Constancia de Situación Fiscal'
+            message: registeredCompany
+                ? 'Datos extraídos y empresa registrada correctamente'
+                : 'Datos extraídos correctamente de la Constancia de Situación Fiscal'
         });
 
     } catch (error) {

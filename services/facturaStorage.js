@@ -217,9 +217,16 @@ class FacturaStorage {
             console.log(`  Actualizadas: ${resultados.actualizadas}`);
             console.log(`  Errores: ${resultados.errores}\n`);
 
+            // Actualizar estadísticas en companies.json
+            await this.actualizarStatsEmpresa(rfc);
+
+            // Obtener estadísticas finales
+            const statsFinales = await this.obtenerEstadisticas(rfc);
+
             return {
                 success: true,
-                ...resultados
+                ...resultados,
+                estadisticas: statsFinales
             };
 
         } catch (error) {
@@ -659,6 +666,98 @@ class FacturaStorage {
                 success: false,
                 error: error.message
             };
+        }
+    }
+
+    /**
+     * Obtener estadísticas de una empresa
+     */
+    async obtenerEstadisticas(rfc) {
+        try {
+            const rutaEmpresa = this.getRutaEmpresa(rfc);
+
+            if (!await fs.pathExists(rutaEmpresa)) {
+                return null;
+            }
+
+            const datosEmpresa = await fs.readJSON(rutaEmpresa);
+            return datosEmpresa.estadisticas;
+        } catch (error) {
+            console.error('Error obteniendo estadísticas:', error.message);
+            return null;
+        }
+    }
+
+    /**
+     * Actualizar stats de empresa en companies.json
+     */
+    async actualizarStatsEmpresa(rfc) {
+        try {
+            const companiesPath = './data/companies.json';
+
+            // Leer estadísticas de facturas
+            const stats = await this.obtenerEstadisticas(rfc);
+            if (!stats) {
+                console.warn(`No se encontraron estadísticas para RFC: ${rfc}`);
+                return;
+            }
+
+            // Leer companies.json
+            if (!await fs.pathExists(companiesPath)) {
+                console.warn('No existe companies.json');
+                return;
+            }
+
+            const companiesData = await fs.readJSON(companiesPath);
+            const empresaIndex = companiesData.companies.findIndex(c => c.rfc === rfc);
+
+            if (empresaIndex === -1) {
+                console.warn(`Empresa con RFC ${rfc} no encontrada en companies.json`);
+                return;
+            }
+
+            // Calcular ingresos y deducciones
+            let totalIngresos = 0;
+            let totalDeducciones = 0;
+
+            const rutaEmpresa = this.getRutaEmpresa(rfc);
+            const datosEmpresa = await fs.readJSON(rutaEmpresa);
+
+            for (const factura of Object.values(datosEmpresa.facturas)) {
+                // Contar facturas vigentes O no verificadas (para incluir todas por defecto)
+                const contarFactura = factura.estadoSAT?.esVigente ||
+                                     (!factura.estadoSAT?.esVigente && !factura.estadoSAT?.esCancelado);
+
+                if (contarFactura) {
+                    const tipoLower = factura.tipoClasificacion?.toLowerCase() || factura.tipoClasificacion || '';
+
+                    if (tipoLower === 'ingreso' && !factura.esNomina) {
+                        totalIngresos += factura.total || 0;
+                    } else if (tipoLower === 'egreso') {
+                        totalDeducciones += factura.total || 0;
+                    }
+                }
+            }
+
+            // Actualizar stats
+            companiesData.companies[empresaIndex].stats = {
+                totalXMLs: stats.total || 0,
+                xmlsThisMonth: companiesData.companies[empresaIndex].stats?.xmlsThisMonth || 0, // Esto requeriría lógica adicional
+                totalEmitidos: stats.porTipo.ingreso + stats.porTipo.nomina + stats.porTipo.pago || 0,
+                totalRecibidos: stats.porTipo.egreso + stats.porTipo.traslado || 0,
+                ingresos: totalIngresos,
+                deducciones: totalDeducciones
+            };
+
+            // Guardar
+            await fs.writeJSON(companiesPath, companiesData, { spaces: 2 });
+            console.log(`✓ Stats actualizados en companies.json para ${rfc}`);
+            console.log(`  Total XMLs: ${stats.total}`);
+            console.log(`  Ingresos: $${totalIngresos.toFixed(2)}`);
+            console.log(`  Deducciones: $${totalDeducciones.toFixed(2)}\n`);
+
+        } catch (error) {
+            console.error('Error actualizando stats en companies.json:', error.message);
         }
     }
 }

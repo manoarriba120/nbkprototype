@@ -1,5 +1,5 @@
 import express from 'express';
-import satWebService from '../services/satWebService.js';
+import satWebServiceV2 from '../services/satWebServiceV2.js';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs-extra';
@@ -52,7 +52,7 @@ router.post('/login-efirma', upload.fields([
         console.log(`   Certificado: ${req.files.certificate[0].originalname}`);
         console.log(`   Clave: ${req.files.key[0].originalname}\n`);
 
-        const result = await satWebService.loginWithEFirma(certificatePath, keyPath, password);
+        const result = await satWebServiceV2.loginWithEFirma(certificatePath, keyPath, password);
 
         // Eliminar archivos temporales
         try {
@@ -97,7 +97,7 @@ router.post('/login-efirma', upload.fields([
  * Obtener información de la sesión actual del Web Service
  */
 router.get('/session', (req, res) => {
-    const session = satWebService.getSession();
+    const session = satWebServiceV2.getSession();
 
     if (session) {
         res.json({
@@ -124,7 +124,7 @@ router.get('/session', (req, res) => {
  */
 router.post('/logout', (req, res) => {
     try {
-        const result = satWebService.logout();
+        const result = satWebServiceV2.logout();
         res.json(result);
     } catch (error) {
         res.status(500).json({
@@ -139,8 +139,8 @@ router.post('/logout', (req, res) => {
  * Verificar estado de la autenticación
  */
 router.get('/health', (req, res) => {
-    const isAuth = satWebService.isAuthenticated();
-    const session = satWebService.getSession();
+    const isAuth = satWebServiceV2.isAuthenticated();
+    const session = satWebServiceV2.getSession();
 
     res.json({
         success: true,

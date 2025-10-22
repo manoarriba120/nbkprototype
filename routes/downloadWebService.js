@@ -1,5 +1,5 @@
 import express from 'express';
-import satWebService from '../services/satWebService.js';
+import satWebServiceV2 from '../services/satWebServiceV2.js';
 import xmlAnalyzer from '../services/xmlAnalyzer.js';
 import facturaStorage from '../services/facturaStorage.js';
 import path from 'path';
@@ -14,7 +14,7 @@ const router = express.Router();
 router.post('/emitidas', async (req, res) => {
     try {
         // Verificar sesión
-        if (!satWebService.isAuthenticated()) {
+        if (!satWebServiceV2.isAuthenticated()) {
             return res.status(401).json({
                 success: false,
                 error: 'No hay sesión activa. Debe autenticarse con e.firma primero.'
@@ -30,7 +30,7 @@ router.post('/emitidas', async (req, res) => {
             });
         }
 
-        const session = satWebService.getSession();
+        const session = satWebServiceV2.getSession();
         const rfc = session.rfc;
 
         // Crear directorio para esta descarga
@@ -48,7 +48,7 @@ router.post('/emitidas', async (req, res) => {
         console.log(`   Período: ${fechaInicio} - ${fechaFin}\n`);
 
         // Realizar descarga completa
-        const result = await satWebService.descargarMasivo('emitidas', fechaInicio, fechaFin, downloadPath);
+        const result = await satWebServiceV2.descargarMasivo('emitidas', fechaInicio, fechaFin, downloadPath);
 
         if (!result.success) {
             return res.status(500).json(result);
@@ -125,7 +125,7 @@ router.post('/emitidas', async (req, res) => {
 router.post('/recibidas', async (req, res) => {
     try {
         // Verificar sesión
-        if (!satWebService.isAuthenticated()) {
+        if (!satWebServiceV2.isAuthenticated()) {
             return res.status(401).json({
                 success: false,
                 error: 'No hay sesión activa. Debe autenticarse con e.firma primero.'
@@ -141,7 +141,7 @@ router.post('/recibidas', async (req, res) => {
             });
         }
 
-        const session = satWebService.getSession();
+        const session = satWebServiceV2.getSession();
         const rfc = session.rfc;
 
         // Crear directorio para esta descarga
@@ -158,7 +158,7 @@ router.post('/recibidas', async (req, res) => {
         console.log(`   Período: ${fechaInicio} - ${fechaFin}\n`);
 
         // Realizar descarga completa
-        const result = await satWebService.descargarMasivo('recibidas', fechaInicio, fechaFin, downloadPath);
+        const result = await satWebServiceV2.descargarMasivo('recibidas', fechaInicio, fechaFin, downloadPath);
 
         if (!result.success) {
             return res.status(500).json(result);
@@ -234,7 +234,7 @@ router.post('/recibidas', async (req, res) => {
  */
 router.post('/solicitar', async (req, res) => {
     try {
-        if (!satWebService.isAuthenticated()) {
+        if (!satWebServiceV2.isAuthenticated()) {
             return res.status(401).json({
                 success: false,
                 error: 'No hay sesión activa'
@@ -250,7 +250,7 @@ router.post('/solicitar', async (req, res) => {
             });
         }
 
-        const result = await satWebService.solicitarDescarga(
+        const result = await satWebServiceV2.solicitarDescarga(
             tipo,
             fechaInicio,
             fechaFin,
@@ -275,7 +275,7 @@ router.post('/solicitar', async (req, res) => {
  */
 router.get('/verificar/:idSolicitud', async (req, res) => {
     try {
-        if (!satWebService.isAuthenticated()) {
+        if (!satWebServiceV2.isAuthenticated()) {
             return res.status(401).json({
                 success: false,
                 error: 'No hay sesión activa'
@@ -283,7 +283,7 @@ router.get('/verificar/:idSolicitud', async (req, res) => {
         }
 
         const { idSolicitud } = req.params;
-        const result = await satWebService.verificarSolicitud(idSolicitud);
+        const result = await satWebServiceV2.verificarSolicitud(idSolicitud);
 
         res.json(result);
 
@@ -302,7 +302,7 @@ router.get('/verificar/:idSolicitud', async (req, res) => {
  */
 router.post('/descargar-paquete', async (req, res) => {
     try {
-        if (!satWebService.isAuthenticated()) {
+        if (!satWebServiceV2.isAuthenticated()) {
             return res.status(401).json({
                 success: false,
                 error: 'No hay sesión activa'
@@ -318,7 +318,7 @@ router.post('/descargar-paquete', async (req, res) => {
             });
         }
 
-        const session = satWebService.getSession();
+        const session = satWebServiceV2.getSession();
         const rfc = session.rfc;
 
         const downloadPath = outputPath || path.join(
@@ -328,7 +328,7 @@ router.post('/descargar-paquete', async (req, res) => {
             Date.now().toString()
         );
 
-        const result = await satWebService.descargarPaquete(idPaquete, downloadPath);
+        const result = await satWebServiceV2.descargarPaquete(idPaquete, downloadPath);
 
         if (result.success) {
             res.json({

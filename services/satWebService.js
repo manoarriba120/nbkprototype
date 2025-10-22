@@ -15,10 +15,12 @@ import path from 'path';
  */
 class SATWebService {
     constructor() {
-        // URLs del Web Service del SAT
+        // URLs oficiales del Web Service del SAT - Descarga Masiva v1.5 (mayo 2025)
+        // Endpoints en producción clouda.sat.gob.mx
+        this.wsdlAutenticacion = 'https://cfdidescargamasivasolicitud.clouda.sat.gob.mx/Autenticacion/Autenticacion.svc';
         this.wsdlSolicitud = 'https://cfdidescargamasivasolicitud.clouda.sat.gob.mx/SolicitaDescargaService.svc';
-        this.wsdlVerificacion = 'https://cfdidescargamasiva.clouda.sat.gob.mx/VerificaSolicitudDescargaService.svc';
-        this.wsdlDescarga = 'https://cfdidescargamasiva.clouda.sat.gob.mx/DescargaMasivaTercerosService.svc';
+        this.wsdlVerificacion = 'https://cfdidescargamasivasolicitud.clouda.sat.gob.mx/VerificaSolicitudDescargaService.svc';
+        this.wsdlDescarga = 'https://cfdidescargamasiva.clouda.sat.gob.mx/DescargaMasivaService.svc';
 
         // Portal de autenticación
         this.portalURL = 'https://portalcfdi.facturaelectronica.sat.gob.mx';
@@ -67,38 +69,154 @@ class SATWebService {
             }
 
             // Desencriptar llave privada (DER encriptado del SAT)
-            let privateKey;
+            let privateKey = null;
+            let lastError = null;
+
+            // Método 1: Intentar como DER binario encriptado (formato estándar del SAT)
             try {
-                // Intentar como DER binario encriptado (formato del SAT)
                 const keyDer = forge.util.createBuffer(keyBuffer);
                 const keyAsn1 = forge.asn1.fromDer(keyDer);
                 privateKey = forge.pki.decryptRsaPrivateKey(keyAsn1, password);
+                if (privateKey) {
+                    console.log('✓ Llave privada desencriptada (formato DER)');
+                }
             } catch (e1) {
+                lastError = e1;
+            }
+
+            // Método 2: Intentar como PEM encriptado
+            if (!privateKey) {
                 try {
-                    // Intentar como PEM
-                    const keyPem = keyBuffer.toString();
-                    privateKey = forge.pki.decryptRsaPrivateKey(keyPem, password);
+                    const keyPem = keyBuffer.toString('utf8');
+                    if (keyPem.includes('BEGIN ENCRYPTED PRIVATE KEY') || keyPem.includes('BEGIN RSA PRIVATE KEY')) {
+                        privateKey = forge.pki.decryptRsaPrivateKey(keyPem, password);
+                        if (privateKey) {
+                            console.log('✓ Llave privada desencriptada (formato PEM)');
+                        }
+                    }
                 } catch (e2) {
-                    throw new Error('Contraseña incorrecta o formato de llave no válido');
+                    lastError = e2;
+                }
+            }
+
+            // Método 3: Intentar convertir DER a PEM y luego desencriptar
+            if (!privateKey) {
+                try {
+                    const keyDer = forge.util.createBuffer(keyBuffer);
+                    const keyAsn1 = forge.asn1.fromDer(keyDer);
+
+                    // Crear estructura PKCS#8 encriptada
+                    const encryptedPrivateKeyInfo = forge.pki.wrapRsaPrivateKey(keyAsn1);
+                    const pem = forge.pki.encryptedPrivateKeyToPem(encryptedPrivateKeyInfo);
+
+                    privateKey = forge.pki.decryptRsaPrivateKey(pem, password);
+                    if (privateKey) {
+                        console.log('✓ Llave privada desencriptada (formato DER→PEM)');
+                    }
+                } catch (e3) {
+                    lastError = e3;
+                }
+            }
+
+            // Método 4: Intentar como PKCS#8 encriptado con desencriptación manual
+            if (!privateKey) {
+                try {
+                    const keyDer = forge.util.createBuffer(keyBuffer);
+                    const keyAsn1 = forge.asn1.fromDer(keyDer);
+
+                    // Desencriptar PKCS#8 EncryptedPrivateKeyInfo
+                    const encryptedPrivateKeyInfo = forge.pki.decryptPrivateKeyInfo(keyAsn1, password);
+                    if (encryptedPrivateKeyInfo) {
+                        privateKey = forge.pki.privateKeyFromAsn1(encryptedPrivateKeyInfo);
+                        if (privateKey) {
+                            console.log('✓ Llave privada desencriptada (formato PKCS#8 EncryptedPrivateKeyInfo)');
+                        }
+                    }
+                } catch (e4) {
+                    lastError = e4;
+                }
+            }
+
+            // Método 5: Intentar leer como PrivateKeyInfo sin encriptar
+            if (!privateKey) {
+                try {
+                    const keyDer = forge.util.createBuffer(keyBuffer);
+                    const keyAsn1 = forge.asn1.fromDer(keyDer);
+
+                    // Intentar como PrivateKeyInfo (PKCS#8 sin encriptar)
+                    privateKey = forge.pki.privateKeyFromAsn1(keyAsn1);
+                    if (privateKey) {
+                        console.log('✓ Llave privada leída (formato PKCS#8)');
+                    }
+                } catch (e5) {
+                    lastError = e5;
                 }
             }
 
             if (!privateKey) {
-                throw new Error('Contraseña de llave privada incorrecta');
+                console.error('❌ Todos los métodos de desencriptación fallaron');
+                console.error('Último error:', lastError?.message);
+                throw new Error('Contraseña incorrecta o formato de llave no válido. Verifica que: (1) La contraseña sea correcta, (2) El archivo .key sea válido, (3) El archivo .key corresponda al certificado .cer');
             }
 
             // Extraer RFC del certificado
+            // El RFC en los certificados del SAT está en el OID 2.5.4.45 (x500UniqueIdentifier)
+            // o en algunos casos en el campo serialNumber del subject
             const subject = cert.subject.attributes;
             let rfc = null;
+
+            // Primero buscar en x500UniqueIdentifier (OID 2.5.4.45)
             for (const attr of subject) {
-                if (attr.shortName === 'serialNumber' || attr.name === 'serialNumber') {
-                    rfc = attr.value.replace(/\s/g, '');
+                if (attr.type === '2.5.4.45' || attr.shortName === 'x500UniqueIdentifier') {
+                    rfc = attr.value.replace(/\s/g, '').toUpperCase();
                     break;
                 }
             }
 
+            // Si no se encuentra, buscar en serialNumber (algunos certificados antiguos)
             if (!rfc) {
-                throw new Error('No se pudo extraer el RFC del certificado');
+                for (const attr of subject) {
+                    if (attr.shortName === 'serialNumber' || attr.name === 'serialNumber') {
+                        // El serialNumber puede contener RFC/CURP separados por /
+                        // Ejemplo: BCO240821BG5/CACG631117C92
+                        let value = attr.value.replace(/\s/g, '').toUpperCase();
+
+                        // Si contiene /, tomar solo la primera parte (RFC)
+                        if (value.includes('/')) {
+                            value = value.split('/')[0];
+                        }
+
+                        // Validar que tenga formato de RFC (12-13 caracteres alfanuméricos)
+                        if (/^[A-Z&Ñ]{3,4}\d{6}[A-Z0-9]{2,3}$/.test(value)) {
+                            rfc = value;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Si aún no se encuentra, intentar extraer del CN (Common Name)
+            if (!rfc) {
+                for (const attr of subject) {
+                    if (attr.shortName === 'CN' || attr.name === 'commonName') {
+                        const cn = attr.value;
+                        // El CN a veces contiene el RFC entre paréntesis o al final
+                        const rfcMatch = cn.match(/\b([A-Z&Ñ]{3,4}\d{6}[A-Z0-9]{2,3})\b/);
+                        if (rfcMatch) {
+                            rfc = rfcMatch[1].toUpperCase();
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (!rfc) {
+                // Mostrar todos los atributos del certificado para debugging
+                console.log('Atributos del certificado encontrados:');
+                subject.forEach(attr => {
+                    console.log(`  - ${attr.name || attr.shortName} (${attr.type}): ${attr.value}`);
+                });
+                throw new Error('No se pudo extraer el RFC del certificado. Verifique que sea un certificado válido de e.firma del SAT.');
             }
 
             // Validar vigencia del certificado
@@ -113,8 +231,11 @@ class SATWebService {
             this.certificatePem = forge.pki.certificateToPem(cert);
             this.certificateDer = forge.asn1.toDer(forge.pki.certificateToAsn1(cert)).getBytes();
 
+            // Extraer solo el RFC (sin CURP si existe)
+            const rfcSolo = rfc.includes('/') ? rfc.split('/')[0] : rfc;
+
             this.session = {
-                rfc: rfc.toUpperCase(),
+                rfc: rfcSolo.toUpperCase(),
                 authenticated: true,
                 authMethod: 'efirma',
                 timestamp: new Date(),
@@ -157,17 +278,69 @@ class SATWebService {
      * Crear sobre SOAP firmado para solicitud
      */
     createSignedSOAP(soapBody) {
+        if (!this.certificate || !this.privateKey) {
+            throw new Error('No hay certificado o llave privada cargados');
+        }
+
         const timestamp = new Date().toISOString();
 
+        // Crear el SOAP Body sin firmar
+        const bodyContent = soapBody.trim();
+
+        // Crear la firma del body content
+        const md = forge.md.sha256.create();
+        md.update(bodyContent, 'utf8');
+        const signature = this.privateKey.sign(md);
+        const signatureB64 = forge.util.encode64(signature);
+
+        // Obtener el certificado en base64
+        const certB64 = forge.util.encode64(this.certificateDer);
+
+        // Crear SOAP envelope con firma WS-Security
         const soap = `<?xml version="1.0" encoding="UTF-8"?>
-<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" xmlns:des="http://DescargaMasivaTerceros.sat.gob.mx">
-    <s:Header/>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" xmlns:des="http://DescargaMasivaTerceros.sat.gob.mx" xmlns:xd="http://www.w3.org/2000/09/xmldsig#">
+    <s:Header>
+        <o:Security s:mustUnderstand="1" xmlns:o="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd">
+            <u:Timestamp u:Id="_0" xmlns:u="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd">
+                <u:Created>${timestamp}</u:Created>
+                <u:Expires>${new Date(Date.now() + 300000).toISOString()}</u:Expires>
+            </u:Timestamp>
+            <o:BinarySecurityToken u:Id="uuid-${this.generateUUID()}" ValueType="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-x509-token-profile-1.0#X509v3" EncodingType="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-soap-message-security-1.0#Base64Binary" xmlns:u="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd">${certB64}</o:BinarySecurityToken>
+            <Signature xmlns="http://www.w3.org/2000/09/xmldsig#">
+                <SignedInfo>
+                    <CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/>
+                    <SignatureMethod Algorithm="http://www.w3.org/2000/09/xmldsig#rsa-sha1"/>
+                    <Reference URI="#_0">
+                        <Transforms>
+                            <Transform Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/>
+                        </Transforms>
+                        <DigestMethod Algorithm="http://www.w3.org/2000/09/xmldsig#sha1"/>
+                        <DigestValue>${signatureB64}</DigestValue>
+                    </Reference>
+                </SignedInfo>
+                <SignatureValue>${signatureB64}</SignatureValue>
+                <KeyInfo>
+                    <o:SecurityTokenReference>
+                        <o:Reference ValueType="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-x509-token-profile-1.0#X509v3" URI="#uuid-${this.generateUUID()}"/>
+                    </o:SecurityTokenReference>
+                </KeyInfo>
+            </Signature>
+        </o:Security>
+    </s:Header>
     <s:Body>
-        ${soapBody}
+        ${bodyContent}
     </s:Body>
 </s:Envelope>`;
 
         return soap;
+    }
+
+    generateUUID() {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            const r = Math.random() * 16 | 0;
+            const v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
     }
 
     /**
@@ -191,31 +364,40 @@ class SATWebService {
             const fechaInicioSAT = this.formatDateForSAT(fechaInicio);
             const fechaFinSAT = this.formatDateForSAT(fechaFin);
 
-            // Determinar tipo de solicitud
-            const tipoSolicitud = tipo === 'emitidas' ? 'CFDI' : 'CFDI';
+            // Versión 1.5 del SAT - Operaciones específicas por tipo
             const rfcSolicitante = this.session.rfc;
+
+            // Determinar operación y SOAPAction según tipo (nombres oficiales del WSDL)
+            const operacion = tipo === 'emitidas' ? 'SolicitaDescargaEmitidos' : 'SolicitaDescargaRecibidos';
+            const soapAction = `http://DescargaMasivaTerceros.sat.gob.mx/ISolicitaDescargaService/${operacion}`;
 
             // Construir parámetros según tipo
             let rfcEmisorParam = rfcEmisor || (tipo === 'emitidas' ? rfcSolicitante : '');
             let rfcReceptorParam = rfcReceptor || (tipo === 'recibidas' ? rfcSolicitante : '');
 
-            // Crear XML de solicitud
-            const solicitudXML = `
-<des:SolicitaDescarga>
-    <des:solicitud RfcSolicitante="${rfcSolicitante}" FechaInicial="${fechaInicioSAT}" FechaFinal="${fechaFinSAT}" TipoSolicitud="${tipoSolicitud}">
-        ${rfcEmisorParam ? `<des:RfcEmisor>${rfcEmisorParam}</des:RfcEmisor>` : ''}
-        ${rfcReceptorParam ? `<des:RfcReceptor>${rfcReceptorParam}</des:RfcReceptor>` : ''}
-    </des:solicitud>
-</des:SolicitaDescarga>`;
+            // Crear XML de solicitud según especificación del SAT v1.5
+            // NOTA: TipoSolicitud ya no se usa en v1.5, se especifica en el nombre de la operación
+            let atributoRfcEmisor = rfcEmisorParam ? ` RfcEmisor="${rfcEmisorParam}"` : '';
+            let atributoRfcReceptor = rfcReceptorParam ? ` RfcReceptor="${rfcReceptorParam}"` : '';
+
+            const solicitudXML = `<des:${operacion}>
+    <des:solicitud FechaInicial="${fechaInicioSAT}" FechaFinal="${fechaFinSAT}"${atributoRfcEmisor}${atributoRfcReceptor}/>
+</des:${operacion}>`;
 
             // Crear SOAP envelope
             const soapEnvelope = this.createSignedSOAP(solicitudXML);
 
-            // Enviar solicitud
+            // DEBUG: Mostrar XML que se enviará
+            console.log('\n📤 XML SOAP que se enviará al SAT:');
+            console.log('─'.repeat(60));
+            console.log(soapEnvelope);
+            console.log('─'.repeat(60));
+
+            // Enviar solicitud al endpoint de solicitud del SAT
             const response = await this.client.post(this.wsdlSolicitud, soapEnvelope, {
                 headers: {
                     'Content-Type': 'text/xml; charset=utf-8',
-                    'SOAPAction': 'http://DescargaMasivaTerceros.sat.gob.mx/ISolicitaDescargaService/SolicitaDescarga'
+                    'SOAPAction': soapAction
                 }
             });
 
@@ -253,6 +435,17 @@ class SATWebService {
 
         } catch (error) {
             console.error('❌ Error solicitando descarga:', error.message);
+
+            // Mostrar detalles del error si está disponible
+            if (error.response) {
+                console.error('📋 Detalles del error del SAT:');
+                console.error('   Status:', error.response.status);
+                console.error('   Headers:', JSON.stringify(error.response.headers, null, 2));
+                console.error('   Data:', typeof error.response.data === 'string'
+                    ? error.response.data.substring(0, 500)
+                    : JSON.stringify(error.response.data, null, 2));
+            }
+
             return {
                 success: false,
                 error: error.message
@@ -281,7 +474,7 @@ class SATWebService {
             const response = await this.client.post(this.wsdlVerificacion, soapEnvelope, {
                 headers: {
                     'Content-Type': 'text/xml; charset=utf-8',
-                    'SOAPAction': 'http://DescargaMasivaTerceros.sat.gob.mx/IVerificaSolicitudDescargaService/VerificaSolicitudDescarga'
+                    'SOAPAction': 'http://DescargaMasivaTerceros.sat.gob.mx/DescargaMasivaTerceros/IVerificaSolicitudDescarga'
                 }
             });
 
@@ -348,7 +541,7 @@ class SATWebService {
             const response = await this.client.post(this.wsdlDescarga, soapEnvelope, {
                 headers: {
                     'Content-Type': 'text/xml; charset=utf-8',
-                    'SOAPAction': 'http://DescargaMasivaTerceros.gob.mx/IDescargaMasivaTercerosService/Descargar'
+                    'SOAPAction': 'http://DescargaMasivaTerceros.sat.gob.mx/DescargaMasivaTerceros/IDescargar'
                 },
                 responseType: 'text'
             });

@@ -18,6 +18,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@nodecfdi/sat-ws-descarga-masiva": "^2.0.0",
     "axios": "^1.6.0",
     "axios-cookiejar-support": "^4.0.7",
     "cheerio": "^1.0.0-rc.12",

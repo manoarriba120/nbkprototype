@@ -116,29 +116,171 @@ class SATService {
             const cerBuffer = await fs.readFile(certificatePath);
             const keyBuffer = await fs.readFile(keyPath);
 
-            // Parsear certificado
-            const cert = forge.pki.certificateFromPem(cerBuffer.toString());
+            // Parsear certificado (DER binario del SAT)
+            let cert;
+            try {
+                // Primero intentar como DER binario (formato del SAT)
+                const certDer = forge.util.createBuffer(cerBuffer);
+                const certAsn1 = forge.asn1.fromDer(certDer);
+                cert = forge.pki.certificateFromAsn1(certAsn1);
+            } catch (e1) {
+                try {
+                    // Si falla, intentar como PEM
+                    cert = forge.pki.certificateFromPem(cerBuffer.toString());
+                } catch (e2) {
+                    throw new Error('Formato de certificado no válido. Use archivo .cer del SAT');
+                }
+            }
 
-            // Desencriptar llave privada
-            const encryptedKey = forge.pki.encryptedPrivateKeyFromPem(keyBuffer.toString());
-            const privateKey = forge.pki.decryptRsaPrivateKey(encryptedKey, password);
+            // Desencriptar llave privada (DER encriptado del SAT)
+            let privateKey = null;
+            let lastError = null;
+
+            // Método 1: Intentar como DER binario encriptado (formato estándar del SAT)
+            try {
+                const keyDer = forge.util.createBuffer(keyBuffer);
+                const keyAsn1 = forge.asn1.fromDer(keyDer);
+                privateKey = forge.pki.decryptRsaPrivateKey(keyAsn1, password);
+                if (privateKey) {
+                    console.log('✓ Llave privada desencriptada (formato DER)');
+                }
+            } catch (e1) {
+                lastError = e1;
+            }
+
+            // Método 2: Intentar como PEM encriptado
+            if (!privateKey) {
+                try {
+                    const keyPem = keyBuffer.toString('utf8');
+                    if (keyPem.includes('BEGIN ENCRYPTED PRIVATE KEY') || keyPem.includes('BEGIN RSA PRIVATE KEY')) {
+                        privateKey = forge.pki.decryptRsaPrivateKey(keyPem, password);
+                        if (privateKey) {
+                            console.log('✓ Llave privada desencriptada (formato PEM)');
+                        }
+                    }
+                } catch (e2) {
+                    lastError = e2;
+                }
+            }
+
+            // Método 3: Intentar convertir DER a PEM y luego desencriptar
+            if (!privateKey) {
+                try {
+                    const keyDer = forge.util.createBuffer(keyBuffer);
+                    const keyAsn1 = forge.asn1.fromDer(keyDer);
+
+                    // Crear estructura PKCS#8 encriptada
+                    const encryptedPrivateKeyInfo = forge.pki.wrapRsaPrivateKey(keyAsn1);
+                    const pem = forge.pki.encryptedPrivateKeyToPem(encryptedPrivateKeyInfo);
+
+                    privateKey = forge.pki.decryptRsaPrivateKey(pem, password);
+                    if (privateKey) {
+                        console.log('✓ Llave privada desencriptada (formato DER→PEM)');
+                    }
+                } catch (e3) {
+                    lastError = e3;
+                }
+            }
+
+            // Método 4: Intentar como PKCS#8 encriptado con desencriptación manual
+            if (!privateKey) {
+                try {
+                    const keyDer = forge.util.createBuffer(keyBuffer);
+                    const keyAsn1 = forge.asn1.fromDer(keyDer);
+
+                    // Desencriptar PKCS#8 EncryptedPrivateKeyInfo
+                    const encryptedPrivateKeyInfo = forge.pki.decryptPrivateKeyInfo(keyAsn1, password);
+                    if (encryptedPrivateKeyInfo) {
+                        privateKey = forge.pki.privateKeyFromAsn1(encryptedPrivateKeyInfo);
+                        if (privateKey) {
+                            console.log('✓ Llave privada desencriptada (formato PKCS#8 EncryptedPrivateKeyInfo)');
+                        }
+                    }
+                } catch (e4) {
+                    lastError = e4;
+                }
+            }
+
+            // Método 5: Intentar leer como PrivateKeyInfo sin encriptar
+            if (!privateKey) {
+                try {
+                    const keyDer = forge.util.createBuffer(keyBuffer);
+                    const keyAsn1 = forge.asn1.fromDer(keyDer);
+
+                    // Intentar como PrivateKeyInfo (PKCS#8 sin encriptar)
+                    privateKey = forge.pki.privateKeyFromAsn1(keyAsn1);
+                    if (privateKey) {
+                        console.log('✓ Llave privada leída (formato PKCS#8)');
+                    }
+                } catch (e5) {
+                    lastError = e5;
+                }
+            }
 
             if (!privateKey) {
-                throw new Error('Contraseña de llave privada incorrecta');
+                console.error('❌ Todos los métodos de desencriptación fallaron');
+                console.error('Último error:', lastError?.message);
+                throw new Error('Contraseña incorrecta o formato de llave no válido. Verifica que: (1) La contraseña sea correcta, (2) El archivo .key sea válido, (3) El archivo .key corresponda al certificado .cer');
             }
 
             // Extraer RFC del certificado
+            // El RFC en los certificados del SAT está en el OID 2.5.4.45 (x500UniqueIdentifier)
+            // o en algunos casos en el campo serialNumber del subject
             const subject = cert.subject.attributes;
             let rfc = null;
+
+            // Primero buscar en x500UniqueIdentifier (OID 2.5.4.45)
             for (const attr of subject) {
-                if (attr.shortName === 'serialNumber') {
-                    rfc = attr.value;
+                if (attr.type === '2.5.4.45' || attr.shortName === 'x500UniqueIdentifier') {
+                    rfc = attr.value.replace(/\s/g, '').toUpperCase();
                     break;
                 }
             }
 
+            // Si no se encuentra, buscar en serialNumber (algunos certificados antiguos)
             if (!rfc) {
-                throw new Error('No se pudo extraer el RFC del certificado');
+                for (const attr of subject) {
+                    if (attr.shortName === 'serialNumber' || attr.name === 'serialNumber') {
+                        // El serialNumber puede contener RFC/CURP separados por /
+                        // Ejemplo: BCO240821BG5/CACG631117C92
+                        let value = attr.value.replace(/\s/g, '').toUpperCase();
+
+                        // Si contiene /, tomar solo la primera parte (RFC)
+                        if (value.includes('/')) {
+                            value = value.split('/')[0];
+                        }
+
+                        // Validar que tenga formato de RFC (12-13 caracteres alfanuméricos)
+                        if (/^[A-Z&Ñ]{3,4}\d{6}[A-Z0-9]{2,3}$/.test(value)) {
+                            rfc = value;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Si aún no se encuentra, intentar extraer del CN (Common Name)
+            if (!rfc) {
+                for (const attr of subject) {
+                    if (attr.shortName === 'CN' || attr.name === 'commonName') {
+                        const cn = attr.value;
+                        // El CN a veces contiene el RFC entre paréntesis o al final
+                        const rfcMatch = cn.match(/\b([A-Z&Ñ]{3,4}\d{6}[A-Z0-9]{2,3})\b/);
+                        if (rfcMatch) {
+                            rfc = rfcMatch[1].toUpperCase();
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (!rfc) {
+                // Mostrar todos los atributos del certificado para debugging
+                console.log('Atributos del certificado encontrados:');
+                subject.forEach(attr => {
+                    console.log(`  - ${attr.name || attr.shortName} (${attr.type}): ${attr.value}`);
+                });
+                throw new Error('No se pudo extraer el RFC del certificado. Verifique que sea un certificado válido de e.firma del SAT.');
             }
 
             console.log(`RFC extraído del certificado: ${rfc}`);
