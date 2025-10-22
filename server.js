@@ -12,6 +12,7 @@ import companiesRoutes from './routes/companies.js';
 import authWebServiceRoutes from './routes/authWebService.js';
 import downloadWebServiceRoutes from './routes/downloadWebService.js';
 import facturasRoutes from './routes/facturas.js';
+import descargaBatchRoutes from './routes/descargaBatch.js';
 
 // Configuración
 dotenv.config();
@@ -54,6 +55,9 @@ app.use('/api/download-ws', downloadWebServiceRoutes);
 
 // Rutas para consulta de facturas guardadas (respaldo por empresa)
 app.use('/api/facturas', facturasRoutes);
+
+// Rutas para descarga por lotes y gestión de caché
+app.use('/api/batch', descargaBatchRoutes);
 
 // Ruta de health check
 app.get('/api/health', (req, res) => {

@@ -689,6 +689,271 @@ class FacturaStorage {
     }
 
     /**
+     * Obtener estadísticas filtradas por período (mes/año)
+     */
+    async obtenerEstadisticasPorPeriodo(rfc, año, mes = null) {
+        try {
+            const rutaEmpresa = this.getRutaEmpresa(rfc);
+
+            if (!await fs.pathExists(rutaEmpresa)) {
+                return {
+                    success: false,
+                    error: 'Empresa no encontrada'
+                };
+            }
+
+            const datosEmpresa = await fs.readJSON(rutaEmpresa);
+            let facturas = Object.values(datosEmpresa.facturas);
+
+            // Filtrar por año y mes
+            facturas = facturas.filter(f => {
+                const fechaFactura = new Date(f.fecha);
+                const añoFactura = fechaFactura.getFullYear();
+                const mesFactura = fechaFactura.getMonth() + 1; // 1-12
+
+                if (mes) {
+                    // Filtrar por mes específico
+                    return añoFactura === parseInt(año) && mesFactura === parseInt(mes);
+                } else {
+                    // Filtrar solo por año
+                    return añoFactura === parseInt(año);
+                }
+            });
+
+            // Calcular estadísticas del período
+            let totalIngresos = 0;
+            let totalDeducciones = 0;
+            let vigentes = 0;
+            let canceladas = 0;
+
+            for (const factura of facturas) {
+                const esCancelada = factura.estadoSAT?.esCancelado === true;
+
+                if (esCancelada) {
+                    canceladas++;
+                } else {
+                    vigentes++;
+                    const tipoLower = factura.tipoClasificacion?.toLowerCase() || '';
+
+                    if (tipoLower === 'ingreso' && !factura.esNomina && factura.tipo !== 'P') {
+                        totalIngresos += factura.subTotal || factura.total || 0;
+                    } else if (tipoLower === 'egreso') {
+                        totalDeducciones += factura.subTotal || factura.total || 0;
+                    }
+                }
+            }
+
+            return {
+                success: true,
+                rfc,
+                año,
+                mes,
+                estadisticas: {
+                    total: facturas.length,
+                    vigentes,
+                    canceladas,
+                    ingresos: totalIngresos,
+                    deducciones: totalDeducciones
+                }
+            };
+
+        } catch (error) {
+            console.error('Error obteniendo estadísticas por período:', error.message);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+    /**
+     * Obtener lista de clientes y proveedores de una empresa
+     */
+    async obtenerClientesYProveedores(rfc, año = null, mes = null) {
+        try {
+            const rutaEmpresa = this.getRutaEmpresa(rfc);
+
+            if (!await fs.pathExists(rutaEmpresa)) {
+                return {
+                    success: false,
+                    error: 'Empresa no encontrada'
+                };
+            }
+
+            const datosEmpresa = await fs.readJSON(rutaEmpresa);
+            let facturas = Object.values(datosEmpresa.facturas);
+
+            // Filtrar por año y mes si se especifica
+            if (año) {
+                facturas = facturas.filter(f => {
+                    const fechaFactura = new Date(f.fecha);
+                    const añoFactura = fechaFactura.getFullYear();
+                    const mesFactura = fechaFactura.getMonth() + 1;
+
+                    if (mes) {
+                        return añoFactura === parseInt(año) && mesFactura === parseInt(mes);
+                    } else {
+                        return añoFactura === parseInt(año);
+                    }
+                });
+            }
+
+            // Mapas para almacenar clientes y proveedores únicos
+            const clientesMap = new Map();
+            const proveedoresMap = new Map();
+
+            for (const factura of facturas) {
+                // Solo contar facturas vigentes
+                if (factura.estadoSAT?.esCancelado) continue;
+
+                const tipoLower = factura.tipoClasificacion?.toLowerCase() || '';
+
+                // Si es factura emitida (ingreso), el receptor es el cliente
+                if (tipoLower === 'ingreso' && !factura.esNomina && factura.tipo !== 'P') {
+                    const rfcCliente = factura.receptor?.rfc;
+                    if (rfcCliente && rfcCliente !== rfc) {
+                        if (!clientesMap.has(rfcCliente)) {
+                            clientesMap.set(rfcCliente, {
+                                rfc: rfcCliente,
+                                nombre: factura.receptor.nombre || 'Sin nombre',
+                                totalFacturas: 0,
+                                totalMonto: 0
+                            });
+                        }
+                        const cliente = clientesMap.get(rfcCliente);
+                        cliente.totalFacturas++;
+                        cliente.totalMonto += factura.subTotal || factura.total || 0;
+                    }
+                }
+
+                // Si es factura recibida (egreso), el emisor es el proveedor
+                if (tipoLower === 'egreso') {
+                    const rfcProveedor = factura.emisor?.rfc;
+                    if (rfcProveedor && rfcProveedor !== rfc) {
+                        if (!proveedoresMap.has(rfcProveedor)) {
+                            proveedoresMap.set(rfcProveedor, {
+                                rfc: rfcProveedor,
+                                nombre: factura.emisor.nombre || 'Sin nombre',
+                                totalFacturas: 0,
+                                totalMonto: 0
+                            });
+                        }
+                        const proveedor = proveedoresMap.get(rfcProveedor);
+                        proveedor.totalFacturas++;
+                        proveedor.totalMonto += factura.subTotal || factura.total || 0;
+                    }
+                }
+            }
+
+            // Convertir a arrays y ordenar por monto descendente
+            const clientes = Array.from(clientesMap.values())
+                .sort((a, b) => b.totalMonto - a.totalMonto);
+
+            const proveedores = Array.from(proveedoresMap.values())
+                .sort((a, b) => b.totalMonto - a.totalMonto);
+
+            // Calcular totales
+            const montoTotalClientes = clientes.reduce((sum, c) => sum + c.totalMonto, 0);
+            const montoTotalProveedores = proveedores.reduce((sum, p) => sum + p.totalMonto, 0);
+
+            // Agregar porcentaje a cada cliente
+            clientes.forEach(cliente => {
+                cliente.porcentaje = montoTotalClientes > 0
+                    ? (cliente.totalMonto / montoTotalClientes) * 100
+                    : 0;
+            });
+
+            // Agregar porcentaje a cada proveedor
+            proveedores.forEach(proveedor => {
+                proveedor.porcentaje = montoTotalProveedores > 0
+                    ? (proveedor.totalMonto / montoTotalProveedores) * 100
+                    : 0;
+            });
+
+            return {
+                success: true,
+                rfc,
+                clientes,
+                proveedores,
+                totales: {
+                    totalClientes: clientes.length,
+                    totalProveedores: proveedores.length,
+                    montoTotalClientes,
+                    montoTotalProveedores
+                }
+            };
+
+        } catch (error) {
+            console.error('Error obteniendo clientes y proveedores:', error.message);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+    /**
+     * Limpiar datos de empresa si no tiene facturas
+     */
+    async limpiarEmpresaSinFacturas(rfc) {
+        try {
+            const rutaEmpresa = this.getRutaEmpresa(rfc);
+
+            // Si no existe el archivo o está vacío, resetear stats
+            if (!await fs.pathExists(rutaEmpresa)) {
+                await this.resetearStatsEmpresa(rfc);
+                return { success: true, limpiado: true };
+            }
+
+            const datosEmpresa = await fs.readJSON(rutaEmpresa);
+            const numFacturas = Object.keys(datosEmpresa.facturas || {}).length;
+
+            // Si no hay facturas, resetear
+            if (numFacturas === 0) {
+                await this.resetearStatsEmpresa(rfc);
+                return { success: true, limpiado: true };
+            }
+
+            return { success: true, limpiado: false };
+        } catch (error) {
+            console.error('Error limpiando empresa:', error.message);
+            return { success: false, error: error.message };
+        }
+    }
+
+    /**
+     * Resetear stats de empresa a cero
+     */
+    async resetearStatsEmpresa(rfc) {
+        try {
+            const companiesPath = './data/companies.json';
+
+            if (!await fs.pathExists(companiesPath)) {
+                return;
+            }
+
+            const companiesData = await fs.readJSON(companiesPath);
+            const empresaIndex = companiesData.companies.findIndex(c => c.rfc === rfc);
+
+            if (empresaIndex !== -1) {
+                companiesData.companies[empresaIndex].stats = {
+                    totalXMLs: 0,
+                    xmlsThisMonth: 0,
+                    totalEmitidos: 0,
+                    totalRecibidos: 0,
+                    ingresos: 0,
+                    deducciones: 0
+                };
+
+                await fs.writeJSON(companiesPath, companiesData, { spaces: 2 });
+                console.log(`✓ Stats reseteados para ${rfc}`);
+            }
+        } catch (error) {
+            console.error('Error reseteando stats:', error.message);
+        }
+    }
+
+    /**
      * Actualizar stats de empresa en companies.json
      */
     async actualizarStatsEmpresa(rfc) {
@@ -724,17 +989,19 @@ class FacturaStorage {
             const datosEmpresa = await fs.readJSON(rutaEmpresa);
 
             for (const factura of Object.values(datosEmpresa.facturas)) {
-                // Contar facturas vigentes O no verificadas (para incluir todas por defecto)
-                const contarFactura = factura.estadoSAT?.esVigente ||
-                                     (!factura.estadoSAT?.esVigente && !factura.estadoSAT?.esCancelado);
+                // Contar facturas VIGENTES o NO VERIFICADAS (asumir vigentes por defecto)
+                // Solo excluir las explícitamente CANCELADAS
+                const esCancelada = factura.estadoSAT?.esCancelado === true;
 
-                if (contarFactura) {
-                    const tipoLower = factura.tipoClasificacion?.toLowerCase() || factura.tipoClasificacion || '';
+                if (!esCancelada) {
+                    const tipoLower = factura.tipoClasificacion?.toLowerCase() || '';
 
-                    if (tipoLower === 'ingreso' && !factura.esNomina) {
-                        totalIngresos += factura.total || 0;
+                    // Excluir complementos de pago y nóminas de los ingresos
+                    // Usar SUBTOTAL en lugar de total (sin IVA)
+                    if (tipoLower === 'ingreso' && !factura.esNomina && factura.tipo !== 'P') {
+                        totalIngresos += factura.subTotal || factura.total || 0;
                     } else if (tipoLower === 'egreso') {
-                        totalDeducciones += factura.total || 0;
+                        totalDeducciones += factura.subTotal || factura.total || 0;
                     }
                 }
             }

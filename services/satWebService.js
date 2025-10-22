@@ -376,12 +376,23 @@ class SATWebService {
             let rfcReceptorParam = rfcReceptor || (tipo === 'recibidas' ? rfcSolicitante : '');
 
             // Crear XML de solicitud según especificación del SAT v1.5
-            // NOTA: TipoSolicitud ya no se usa en v1.5, se especifica en el nombre de la operación
             let atributoRfcEmisor = rfcEmisorParam ? ` RfcEmisor="${rfcEmisorParam}"` : '';
             let atributoRfcReceptor = rfcReceptorParam ? ` RfcReceptor="${rfcReceptorParam}"` : '';
 
+            // Para facturas recibidas, el SAT REQUIERE EstadoComprobante="Vigente"
+            // Si se omite o se pone "Todos" o "Cancelado", el SAT rechaza con error 301
+            // Valores válidos: "Vigente", "Cancelado", "Todos" (pero solo "Vigente" funciona para recibidas)
+            let atributoEstadoComprobante = '';
+            if (tipo === 'recibidas') {
+                atributoEstadoComprobante = ' EstadoComprobante="Vigente"';
+            }
+
+            // TipoSolicitud siempre es CFDI (para descargar XML completos, no solo metadata)
+            const atributoTipoSolicitud = ' TipoSolicitud="CFDI"';
+
+            // El SAT requiere los atributos en orden alfabético
             const solicitudXML = `<des:${operacion}>
-    <des:solicitud FechaInicial="${fechaInicioSAT}" FechaFinal="${fechaFinSAT}"${atributoRfcEmisor}${atributoRfcReceptor}/>
+    <des:solicitud${atributoEstadoComprobante} FechaFinal="${fechaFinSAT}" FechaInicial="${fechaInicioSAT}"${atributoRfcEmisor}${atributoRfcReceptor}${atributoTipoSolicitud}/>
 </des:${operacion}>`;
 
             // Crear SOAP envelope

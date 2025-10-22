@@ -4,8 +4,74 @@ import xmlAnalyzer from '../services/xmlAnalyzer.js';
 import facturaStorage from '../services/facturaStorage.js';
 import path from 'path';
 import fs from 'fs-extra';
+import xml2js from 'xml2js';
 
 const router = express.Router();
+
+/**
+ * Organizar XMLs por mes basándose en la fecha de cada factura
+ */
+async function organizarPorMes(tempPath, rfc, tipo) {
+    console.log(`\n📁 Organizando facturas por mes...`);
+
+    const parser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: false, mergeAttrs: true });
+    const basePath = path.join(process.env.DOWNLOAD_PATH || './downloads', rfc, tipo);
+
+    // Leer todos los XMLs del directorio temporal
+    const files = await fs.readdir(tempPath);
+    const xmlFiles = files.filter(f => f.endsWith('.xml'));
+
+    let movidos = 0;
+    let omitidos = 0;
+
+    for (const file of xmlFiles) {
+        try {
+            const xmlPath = path.join(tempPath, file);
+            const xmlContent = await fs.readFile(xmlPath, 'utf-8');
+            const result = await parser.parseStringPromise(xmlContent);
+
+            const comprobante = result['cfdi:Comprobante'] || result['Comprobante'];
+            const fecha = comprobante?.Fecha || comprobante?.fecha;
+
+            if (fecha) {
+                // Extraer mes y año (formato: 2024-10-15T... -> 1024)
+                const [year, month] = fecha.split('-');
+                const mesAno = `${month}${year.substring(2)}`; // 1024, 1124, etc.
+
+                // Crear carpeta del mes si no existe
+                const mesPath = path.join(basePath, mesAno);
+                await fs.ensureDir(mesPath);
+
+                // Verificar si el archivo ya existe
+                const destPath = path.join(mesPath, file);
+
+                if (await fs.pathExists(destPath)) {
+                    // Archivo ya existe, no duplicar
+                    omitidos++;
+                    await fs.remove(xmlPath); // Eliminar el temporal
+                } else {
+                    // Mover archivo
+                    await fs.move(xmlPath, destPath);
+                    movidos++;
+                }
+            }
+        } catch (error) {
+            console.error(`Error procesando ${file}:`, error.message);
+        }
+    }
+
+    // Eliminar carpeta temporal
+    await fs.remove(tempPath);
+
+    console.log(`✓ ${movidos} facturas organizadas por mes`);
+    if (omitidos > 0) {
+        console.log(`⚠ ${omitidos} facturas ya existían (no duplicadas)\n`);
+    } else {
+        console.log('');
+    }
+
+    return { success: true, movidos, omitidos };
+}
 
 /**
  * POST /api/download-ws/emitidas
@@ -33,52 +99,55 @@ router.post('/emitidas', async (req, res) => {
         const session = satWebServiceV2.getSession();
         const rfc = session.rfc;
 
-        // Crear directorio para esta descarga
-        const timestamp = Date.now();
-        const downloadPath = path.join(
+        // Crear directorio temporal para descarga
+        const tempDownloadPath = path.join(
             process.env.DOWNLOAD_PATH || './downloads',
             rfc,
-            'emitidas',
-            timestamp.toString()
+            'temp_emitidas'
         );
-        await fs.ensureDir(downloadPath);
+        await fs.ensureDir(tempDownloadPath);
 
         // Iniciar descarga masiva en background
         console.log(`\n🚀 Iniciando descarga masiva de facturas emitidas para ${rfc}`);
         console.log(`   Período: ${fechaInicio} - ${fechaFin}\n`);
 
         // Realizar descarga completa
-        const result = await satWebServiceV2.descargarMasivo('emitidas', fechaInicio, fechaFin, downloadPath);
+        const result = await satWebServiceV2.descargarMasivo('emitidas', fechaInicio, fechaFin, tempDownloadPath);
 
         if (!result.success) {
             return res.status(500).json(result);
         }
 
         // Opción: Clasificar automáticamente
-        const { clasificar = true, verificarEstado = false, guardarRespaldo = true } = req.body;
+        const { clasificar = true, verificarEstado = true, guardarRespaldo = true } = req.body;
 
         let clasificacion = null;
         let respaldo = null;
 
         if (clasificar && result.total > 0) {
             console.log('\n📊 Clasificando facturas...\n');
-            clasificacion = await xmlAnalyzer.procesarCompleto(downloadPath, {
+            clasificacion = await xmlAnalyzer.procesarCompleto(tempDownloadPath, {
                 verificarEstado: verificarEstado,
-                organizarPorClasificacion: true,
-                generarReporteJSON: true,
+                organizarPorClasificacion: false, // No organizar por tipo
+                generarReporteJSON: false,
                 delayVerificacion: 500
             });
 
-            // Guardar respaldo automático en base de datos
+            // Guardar respaldo automático en base de datos ANTES de organizar
             if (guardarRespaldo && clasificacion.success) {
                 console.log('\n💾 Guardando respaldo en base de datos...\n');
                 respaldo = await facturaStorage.guardarFacturasLote(
                     rfc,
                     clasificacion.analisis,
-                    downloadPath
+                    tempDownloadPath
                 );
             }
+
+            // Organizar por mes DESPUÉS de guardar
+            await organizarPorMes(tempDownloadPath, rfc, 'emitidas');
         }
+
+        const finalPath = path.join(process.env.DOWNLOAD_PATH || './downloads', rfc, 'emitidas');
 
         res.json({
             success: true,
@@ -94,12 +163,11 @@ router.post('/emitidas', async (req, res) => {
                 filename: a.filename,
                 size: a.size
             })),
-            downloadPath,
+            downloadPath: finalPath,
             clasificacion: clasificacion ? {
                 vigentes: clasificacion.analisis?.porEstado.vigente.length || 0,
                 cancelados: clasificacion.analisis?.porEstado.cancelado.length || 0,
-                nomina: clasificacion.analisis?.porTipo.nomina.length || 0,
-                reporte: clasificacion.reporte
+                nomina: clasificacion.analisis?.porTipo.nomina.length || 0
             } : null,
             respaldo: respaldo ? {
                 guardadas: respaldo.guardadas,
@@ -144,51 +212,54 @@ router.post('/recibidas', async (req, res) => {
         const session = satWebServiceV2.getSession();
         const rfc = session.rfc;
 
-        // Crear directorio para esta descarga
-        const timestamp = Date.now();
-        const downloadPath = path.join(
+        // Crear directorio temporal para descarga
+        const tempDownloadPath = path.join(
             process.env.DOWNLOAD_PATH || './downloads',
             rfc,
-            'recibidas',
-            timestamp.toString()
+            'temp_recibidas'
         );
-        await fs.ensureDir(downloadPath);
+        await fs.ensureDir(tempDownloadPath);
 
         console.log(`\n🚀 Iniciando descarga masiva de facturas recibidas para ${rfc}`);
         console.log(`   Período: ${fechaInicio} - ${fechaFin}\n`);
 
         // Realizar descarga completa
-        const result = await satWebServiceV2.descargarMasivo('recibidas', fechaInicio, fechaFin, downloadPath);
+        const result = await satWebServiceV2.descargarMasivo('recibidas', fechaInicio, fechaFin, tempDownloadPath);
 
         if (!result.success) {
             return res.status(500).json(result);
         }
 
         // Opción: Clasificar automáticamente
-        const { clasificar = true, verificarEstado = false, guardarRespaldo = true } = req.body;
+        const { clasificar = true, verificarEstado = true, guardarRespaldo = true } = req.body;
 
         let clasificacion = null;
         let respaldo = null;
 
         if (clasificar && result.total > 0) {
             console.log('\n📊 Clasificando facturas...\n');
-            clasificacion = await xmlAnalyzer.procesarCompleto(downloadPath, {
+            clasificacion = await xmlAnalyzer.procesarCompleto(tempDownloadPath, {
                 verificarEstado: verificarEstado,
-                organizarPorClasificacion: true,
-                generarReporteJSON: true,
+                organizarPorClasificacion: false, // No organizar por tipo
+                generarReporteJSON: false,
                 delayVerificacion: 500
             });
 
-            // Guardar respaldo automático en base de datos
+            // Guardar respaldo automático en base de datos ANTES de organizar
             if (guardarRespaldo && clasificacion.success) {
                 console.log('\n💾 Guardando respaldo en base de datos...\n');
                 respaldo = await facturaStorage.guardarFacturasLote(
                     rfc,
                     clasificacion.analisis,
-                    downloadPath
+                    tempDownloadPath
                 );
             }
+
+            // Organizar por mes DESPUÉS de guardar
+            await organizarPorMes(tempDownloadPath, rfc, 'recibidas');
         }
+
+        const finalPath = path.join(process.env.DOWNLOAD_PATH || './downloads', rfc, 'recibidas');
 
         res.json({
             success: true,
@@ -204,12 +275,11 @@ router.post('/recibidas', async (req, res) => {
                 filename: a.filename,
                 size: a.size
             })),
-            downloadPath,
+            downloadPath: finalPath,
             clasificacion: clasificacion ? {
                 vigentes: clasificacion.analisis?.porEstado.vigente.length || 0,
                 cancelados: clasificacion.analisis?.porEstado.cancelado.length || 0,
-                nomina: clasificacion.analisis?.porTipo.nomina.length || 0,
-                reporte: clasificacion.reporte
+                nomina: clasificacion.analisis?.porTipo.nomina.length || 0
             } : null,
             respaldo: respaldo ? {
                 guardadas: respaldo.guardadas,

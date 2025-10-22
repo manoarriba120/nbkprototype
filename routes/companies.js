@@ -403,4 +403,55 @@ router.delete('/:rfc', async (req, res) => {
     }
 });
 
+/**
+ * GET /api/companies/:rfc/stats/periodo
+ * Obtener estadísticas por período (año o mes)
+ * Query params: año (requerido), mes (opcional)
+ */
+router.get('/:rfc/stats/periodo', async (req, res) => {
+    try {
+        const { rfc } = req.params;
+        const { año, mes } = req.query;
+
+        if (!año) {
+            return res.status(400).json({
+                success: false,
+                error: 'El parámetro año es requerido'
+            });
+        }
+
+        const facturaStorage = (await import('../services/facturaStorage.js')).default;
+        const resultado = await facturaStorage.obtenerEstadisticasPorPeriodo(rfc, año, mes);
+
+        res.json(resultado);
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+/**
+ * GET /api/companies/:rfc/clientes-proveedores
+ * Obtener lista de clientes y proveedores de una empresa
+ * Query params: año (opcional), mes (opcional)
+ */
+router.get('/:rfc/clientes-proveedores', async (req, res) => {
+    try {
+        const { rfc } = req.params;
+        const { año, mes } = req.query;
+
+        const facturaStorage = (await import('../services/facturaStorage.js')).default;
+        const resultado = await facturaStorage.obtenerClientesYProveedores(rfc, año, mes);
+
+        res.json(resultado);
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
 export default router;

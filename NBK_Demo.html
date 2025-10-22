@@ -1746,117 +1746,89 @@
                                         </div>
                                     </div>
 
-                                    {/* Two Column Layout */}
-                                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                                        {/* Left Column */}
-                                        <div className="lg:col-span-2 space-y-6">
-                                            {/* Proveedores */}
-                                            <div className="bg-white rounded-lg shadow p-6">
-                                                <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">
-                                                    Proveedores
-                                                </h2>
+                                    {/* Indicador de Caché SAT */}
+                                    <CacheSATIndicador />
 
-                                                <div className="space-y-3">
-                                                    <div className="text-center py-8 text-gray-500">
-                                                        <p className="text-sm">No hay datos de proveedores disponibles</p>
-                                                        <p className="text-xs mt-1">Descarga facturas recibidas para ver tus proveedores</p>
+                                    {/* Filtros de Período y Clientes/Proveedores */}
+                                    {empresaActiva && <FiltrosYClientesProveedores empresaActiva={empresaActiva} />}
+
+                                    {/* Activity Section */}
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                        {/* Recent Activity */}
+                                        <div className="bg-white rounded-xl shadow-lg p-6">
+                                            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                                                <Activity className="w-5 h-5 mr-2 text-indigo-600" />
+                                                Actividad Reciente
+                                            </h2>
+
+                                            <div className="space-y-3">
+                                                {recentActivity.map((activity) => (
+                                                    <div key={activity.id} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                                                        <div className="flex-shrink-0">
+                                                            {activity.type === 'download' && <Download className="w-5 h-5 text-blue-600" />}
+                                                            {activity.type === 'sync' && <RefreshCw className="w-5 h-5 text-green-600" />}
+                                                            {activity.type === 'export' && <FileDown className="w-5 h-5 text-purple-600" />}
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-sm text-gray-900">{activity.description}</p>
+                                                            <p className="text-xs text-gray-500 mt-1">{formatDateTime(activity.timestamp)}</p>
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            </div>
-
-                                            {/* Clientes */}
-                                            <div className="bg-white rounded-lg shadow p-6">
-                                                <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">
-                                                    Clientes
-                                                </h2>
-
-                                                <div className="space-y-3">
-                                                    <div className="text-center py-8 text-gray-500">
-                                                        <p className="text-sm">No hay datos de clientes disponibles</p>
-                                                        <p className="text-xs mt-1">Descarga facturas emitidas para ver tus clientes</p>
-                                                    </div>
-                                                </div>
+                                                ))}
                                             </div>
                                         </div>
 
-                                        {/* Right Column */}
-                                        <div className="space-y-6">
-                                            {/* Recent Activity */}
-                                            <div className="bg-white rounded-xl shadow-lg p-6">
-                                                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                                                    <Activity className="w-5 h-5 mr-2 text-indigo-600" />
-                                                    Actividad Reciente
-                                                </h2>
+                                        {/* Upcoming Syncs */}
+                                        <div className="bg-white rounded-xl shadow-lg p-6">
+                                            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                                                <Calendar className="w-5 h-5 mr-2 text-indigo-600" />
+                                                Próximas Sincronizaciones
+                                            </h2>
 
-                                                <div className="space-y-3">
-                                                    {recentActivity.map((activity) => (
-                                                        <div key={activity.id} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
-                                                            <div className="flex-shrink-0">
-                                                                {activity.type === 'download' && <Download className="w-5 h-5 text-blue-600" />}
-                                                                {activity.type === 'sync' && <RefreshCw className="w-5 h-5 text-green-600" />}
-                                                                {activity.type === 'export' && <FileDown className="w-5 h-5 text-purple-600" />}
-                                                            </div>
-                                                            <div className="flex-1 min-w-0">
-                                                                <p className="text-sm text-gray-900">{activity.description}</p>
-                                                                <p className="text-xs text-gray-500 mt-1">{formatDateTime(activity.timestamp)}</p>
-                                                            </div>
+                                            <div className="space-y-3">
+                                                {upcomingSyncs.map((sync) => (
+                                                    <div key={sync.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                                        <div>
+                                                            <div className="font-medium text-gray-900">{sync.name}</div>
+                                                            <div className="text-sm text-gray-500">{formatDateTime(sync.nextRun)}</div>
                                                         </div>
-                                                    ))}
-                                                </div>
+                                                        <Clock className="w-5 h-5 text-gray-400" />
+                                                    </div>
+                                                ))}
                                             </div>
+                                        </div>
 
-                                            {/* Upcoming Syncs */}
-                                            <div className="bg-white rounded-xl shadow-lg p-6">
-                                                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                                                    <Calendar className="w-5 h-5 mr-2 text-indigo-600" />
-                                                    Próximas Sincronizaciones
-                                                </h2>
+                                        {/* Quick Actions */}
+                                        <div className="bg-white rounded-xl shadow-lg p-6">
+                                            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                                                <Zap className="w-5 h-5 mr-2 text-indigo-600" />
+                                                Acciones Rápidas
+                                            </h2>
 
-                                                <div className="space-y-3">
-                                                    {upcomingSyncs.map((sync) => (
-                                                        <div key={sync.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                                                            <div>
-                                                                <div className="font-medium text-gray-900">{sync.name}</div>
-                                                                <div className="text-sm text-gray-500">{formatDateTime(sync.nextRun)}</div>
-                                                            </div>
-                                                            <Clock className="w-5 h-5 text-gray-400" />
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
+                                            <div className="space-y-2">
+                                                <button
+                                                    onClick={() => addNotification('Sincronización iniciada', 'success')}
+                                                    className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition flex items-center justify-center"
+                                                >
+                                                    <RefreshCw className="w-4 h-4 mr-2" />
+                                                    Sincronizar Ahora
+                                                </button>
 
-                                            {/* Quick Actions */}
-                                            <div className="bg-white rounded-xl shadow-lg p-6">
-                                                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                                                    <Zap className="w-5 h-5 mr-2 text-indigo-600" />
-                                                    Acciones Rápidas
-                                                </h2>
+                                                <button
+                                                    onClick={() => addNotification('Generando reporte...', 'info')}
+                                                    className="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition flex items-center justify-center"
+                                                >
+                                                    <FileDown className="w-4 h-4 mr-2" />
+                                                    Exportar Mes
+                                                </button>
 
-                                                <div className="space-y-2">
-                                                    <button
-                                                        onClick={() => addNotification('Sincronización iniciada', 'success')}
-                                                        className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition flex items-center justify-center"
-                                                    >
-                                                        <RefreshCw className="w-4 h-4 mr-2" />
-                                                        Sincronizar Ahora
-                                                    </button>
-
-                                                    <button
-                                                        onClick={() => addNotification('Generando reporte...', 'info')}
-                                                        className="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition flex items-center justify-center"
-                                                    >
-                                                        <FileDown className="w-4 h-4 mr-2" />
-                                                        Exportar Mes
-                                                    </button>
-
-                                                    <button
-                                                        onClick={() => addNotification('Creando respaldo...', 'info')}
-                                                        className="w-full py-3 px-4 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition flex items-center justify-center"
-                                                    >
-                                                        <Archive className="w-4 h-4 mr-2" />
-                                                        Crear Backup
-                                                    </button>
-                                                </div>
+                                                <button
+                                                    onClick={() => addNotification('Creando respaldo...', 'info')}
+                                                    className="w-full py-3 px-4 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition flex items-center justify-center"
+                                                >
+                                                    <Archive className="w-4 h-4 mr-2" />
+                                                    Crear Backup
+                                                </button>
                                             </div>
                                         </div>
                                     </div>
@@ -2236,6 +2208,287 @@
                                 </tbody>
                             </table>
                         </div>
+                </div>
+            );
+        };
+
+        // ============================================================================
+        // INDICADOR DE CACHÉ SAT
+        // ============================================================================
+        const CacheSATIndicador = () => {
+            const [estadisticas, setEstadisticas] = React.useState(null);
+            const [loading, setLoading] = React.useState(false);
+
+            React.useEffect(() => {
+                cargarEstadisticas();
+                // Actualizar cada 30 segundos
+                const interval = setInterval(cargarEstadisticas, 30000);
+                return () => clearInterval(interval);
+            }, []);
+
+            const cargarEstadisticas = async () => {
+                try {
+                    const response = await fetch('/api/batch/estadisticas-cache');
+                    const data = await response.json();
+                    if (data.success) {
+                        setEstadisticas(data);
+                    }
+                } catch (error) {
+                    console.error('Error cargando estadísticas de caché:', error);
+                }
+            };
+
+            if (!estadisticas) return null;
+
+            const cuotaAhorrada = estadisticas.solicitudes.filter(s => s.valida).length;
+
+            return (
+                <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg p-4 mb-6">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="bg-green-500 text-white rounded-full p-2">
+                                <RefreshCw className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <h3 className="font-semibold text-green-900">Sistema de Caché SAT Activo</h3>
+                                <p className="text-sm text-green-700">
+                                    {cuotaAhorrada} solicitudes reutilizables • Ahorro de cuota optimizado
+                                </p>
+                            </div>
+                        </div>
+                        <div className="text-right">
+                            <div className="text-2xl font-bold text-green-600">{estadisticas.estadisticas.validas}</div>
+                            <div className="text-xs text-green-600">Válidas</div>
+                        </div>
+                    </div>
+                    {estadisticas.solicitudes.length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-green-200">
+                            <p className="text-xs text-green-700">
+                                💡 Las siguientes {estadisticas.solicitudes.length} empresas pueden descargar sin consumir cuota adicional
+                            </p>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // ============================================================================
+        // CONTENEDOR DE FILTROS Y CLIENTES/PROVEEDORES
+        // ============================================================================
+        const FiltrosYClientesProveedores = ({ empresaActiva }) => {
+            const [añoSeleccionado, setAñoSeleccionado] = React.useState(new Date().getFullYear());
+            const [mesSeleccionado, setMesSeleccionado] = React.useState('');
+
+            return (
+                <div className="space-y-6">
+                    <FiltrosPeriodo
+                        empresaActiva={empresaActiva}
+                        añoSeleccionado={añoSeleccionado}
+                        setAñoSeleccionado={setAñoSeleccionado}
+                        mesSeleccionado={mesSeleccionado}
+                        setMesSeleccionado={setMesSeleccionado}
+                    />
+                    <ClientesProveedores
+                        empresaActiva={empresaActiva}
+                        añoSeleccionado={añoSeleccionado}
+                        mesSeleccionado={mesSeleccionado}
+                    />
+                </div>
+            );
+        };
+
+        // ============================================================================
+        // FILTROS DE PERÍODO
+        // ============================================================================
+        const FiltrosPeriodo = ({ empresaActiva, añoSeleccionado, setAñoSeleccionado, mesSeleccionado, setMesSeleccionado }) => {
+            const [estadisticasFiltradas, setEstadisticasFiltradas] = React.useState(null);
+            const [loading, setLoading] = React.useState(false);
+
+            const años = [];
+            const añoActual = new Date().getFullYear();
+            for (let i = 0; i < 5; i++) {
+                años.push(añoActual - i);
+            }
+
+            const meses = [
+                { valor: '', label: 'Todo el año' },
+                { valor: '1', label: 'Enero' },
+                { valor: '2', label: 'Febrero' },
+                { valor: '3', label: 'Marzo' },
+                { valor: '4', label: 'Abril' },
+                { valor: '5', label: 'Mayo' },
+                { valor: '6', label: 'Junio' },
+                { valor: '7', label: 'Julio' },
+                { valor: '8', label: 'Agosto' },
+                { valor: '9', label: 'Septiembre' },
+                { valor: '10', label: 'Octubre' },
+                { valor: '11', label: 'Noviembre' },
+                { valor: '12', label: 'Diciembre' }
+            ];
+
+            React.useEffect(() => {
+                if (empresaActiva) {
+                    cargarEstadisticasPeriodo();
+                }
+            }, [añoSeleccionado, mesSeleccionado, empresaActiva]);
+
+            const cargarEstadisticasPeriodo = async () => {
+                if (!empresaActiva) return;
+                setLoading(true);
+                try {
+                    const queryParams = new URLSearchParams({ año: añoSeleccionado });
+                    if (mesSeleccionado) queryParams.append('mes', mesSeleccionado);
+                    const response = await fetch(`/api/companies/${empresaActiva.rfc}/stats/periodo?${queryParams}`);
+                    const data = await response.json();
+                    if (data.success) {
+                        setEstadisticasFiltradas(data.estadisticas);
+                    }
+                } catch (error) {
+                    console.error('Error cargando estadísticas:', error);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            if (!empresaActiva) return null;
+
+            return (
+                <div className="bg-white rounded-lg shadow p-6 mb-6">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Filtrar por Período</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Año</label>
+                            <select value={añoSeleccionado} onChange={(e) => setAñoSeleccionado(parseInt(e.target.value))} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                                {años.map(año => <option key={año} value={año}>{año}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Mes</label>
+                            <select value={mesSeleccionado} onChange={(e) => setMesSeleccionado(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                                {meses.map(mes => <option key={mes.valor} value={mes.valor}>{mes.label}</option>)}
+                            </select>
+                        </div>
+                        <div className="flex items-end">
+                            <button onClick={cargarEstadisticasPeriodo} disabled={loading} className="w-full px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition disabled:bg-gray-400">
+                                {loading ? 'Cargando...' : 'Actualizar'}
+                            </button>
+                        </div>
+                    </div>
+                    {estadisticasFiltradas && !loading && (
+                        <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div className="bg-gray-50 rounded-lg p-4">
+                                <div className="text-sm text-gray-600">Total XMLs</div>
+                                <div className="text-2xl font-bold text-gray-900">{estadisticasFiltradas.total}</div>
+                            </div>
+                            <div className="bg-green-50 rounded-lg p-4">
+                                <div className="text-sm text-gray-600">Vigentes</div>
+                                <div className="text-2xl font-bold text-green-600">{estadisticasFiltradas.vigentes}</div>
+                            </div>
+                            <div className="bg-red-50 rounded-lg p-4">
+                                <div className="text-sm text-gray-600">Canceladas</div>
+                                <div className="text-2xl font-bold text-red-600">{estadisticasFiltradas.canceladas}</div>
+                            </div>
+                            <div className="bg-blue-50 rounded-lg p-4">
+                                <div className="text-sm text-gray-600">Ingresos</div>
+                                <div className="text-xl font-bold text-blue-600">${estadisticasFiltradas.ingresos.toLocaleString('es-MX', {minimumFractionDigits: 2})}</div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // ============================================================================
+        // CLIENTES Y PROVEEDORES
+        // ============================================================================
+        const ClientesProveedores = ({ empresaActiva, añoSeleccionado, mesSeleccionado }) => {
+            const [datos, setDatos] = React.useState(null);
+            const [loading, setLoading] = React.useState(false);
+            const [vistaActiva, setVistaActiva] = React.useState('clientes');
+
+            React.useEffect(() => {
+                if (empresaActiva) {
+                    cargarClientesProveedores();
+                }
+            }, [empresaActiva, añoSeleccionado, mesSeleccionado]);
+
+            const cargarClientesProveedores = async () => {
+                if (!empresaActiva) return;
+                setLoading(true);
+                try {
+                    const queryParams = new URLSearchParams({ año: añoSeleccionado });
+                    if (mesSeleccionado) queryParams.append('mes', mesSeleccionado);
+                    const response = await fetch(`/api/companies/${empresaActiva.rfc}/clientes-proveedores?${queryParams}`);
+                    const data = await response.json();
+                    if (data.success) {
+                        setDatos(data);
+                    }
+                } catch (error) {
+                    console.error('Error cargando clientes/proveedores:', error);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            if (!empresaActiva) return null;
+            if (loading) {
+                return (
+                    <div className="bg-white rounded-lg shadow p-6">
+                        <div className="text-center py-8">
+                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+                            <p className="mt-4 text-gray-600">Cargando datos...</p>
+                        </div>
+                    </div>
+                );
+            }
+            if (!datos) return null;
+
+            const listaActual = vistaActiva === 'clientes' ? datos.clientes : datos.proveedores;
+
+            return (
+                <div className="bg-white rounded-lg shadow overflow-hidden mb-6">
+                    <div className="border-b border-gray-200">
+                        <div className="flex">
+                            <button onClick={() => setVistaActiva('clientes')} className={`flex-1 px-6 py-4 text-center font-medium transition ${vistaActiva === 'clientes' ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'}`}>
+                                Clientes ({datos.clientes.length})
+                                <div className="text-sm text-gray-500 mt-1">${datos.totales.montoTotalClientes.toLocaleString('es-MX', {minimumFractionDigits: 2})}</div>
+                            </button>
+                            <button onClick={() => setVistaActiva('proveedores')} className={`flex-1 px-6 py-4 text-center font-medium transition ${vistaActiva === 'proveedores' ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'}`}>
+                                Proveedores ({datos.proveedores.length})
+                                <div className="text-sm text-gray-500 mt-1">${datos.totales.montoTotalProveedores.toLocaleString('es-MX', {minimumFractionDigits: 2})}</div>
+                            </button>
+                        </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                        {listaActual.length === 0 ? (
+                            <div className="text-center py-12 text-gray-500">No hay {vistaActiva} registrados</div>
+                        ) : (
+                            <table className="w-full">
+                                <thead className="bg-gray-50 border-b border-gray-200">
+                                    <tr>
+                                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">No.</th>
+                                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">RFC</th>
+                                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Nombre / Razón Social</th>
+                                        <th className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase">Facturas</th>
+                                        <th className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase">Monto Total</th>
+                                        <th className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase">% del Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-200">
+                                    {listaActual.map((item, index) => (
+                                        <tr key={item.rfc} className="hover:bg-gray-50">
+                                            <td className="px-6 py-4 text-sm text-gray-900">{index + 1}</td>
+                                            <td className="px-6 py-4"><span className="font-mono text-sm text-gray-900">{item.rfc}</span></td>
+                                            <td className="px-6 py-4 text-sm text-gray-900">{item.nombre}</td>
+                                            <td className="px-6 py-4 text-sm text-gray-600 text-right">{item.totalFacturas}</td>
+                                            <td className="px-6 py-4 text-sm font-semibold text-gray-900 text-right">${item.totalMonto.toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                            <td className="px-6 py-4 text-sm font-bold text-indigo-600 text-right">{item.porcentaje.toFixed(1)}%</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        )}
+                    </div>
                 </div>
             );
         };

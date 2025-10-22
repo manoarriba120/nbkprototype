@@ -194,24 +194,32 @@ class XMLAnalyzer {
             const consultaResult = result['s:Envelope']['s:Body']['ConsultaResponse']['ConsultaResult'];
             const estado = consultaResult['a:Estado'];
             const codigoEstatus = consultaResult['a:CodigoEstatus'];
+            const estatusCancelacion = consultaResult['a:EstatusCancelacion'] || '';
 
-            // Códigos del SAT:
-            // S - Comprobante obtenido satisfactoriamente (VIGENTE)
-            // N - Comprobante no encontrado
-            // C - Comprobante cancelado
+            // El campo importante es "Estado", no "CodigoEstatus"
+            // Estado puede ser: "Vigente" o "Cancelado"
+            // CodigoEstatus indica si se encontró el comprobante (S) o no (N)
 
             let estadoFinal = 'Desconocido';
             let esCancelado = false;
             let esVigente = false;
 
-            if (codigoEstatus === 'S') {
+            // Revisar el campo Estado (no CodigoEstatus)
+            if (estado && estado.toLowerCase().includes('vigente')) {
                 estadoFinal = 'Vigente';
                 esVigente = true;
-            } else if (codigoEstatus === 'C') {
+            } else if (estado && estado.toLowerCase().includes('cancelado')) {
                 estadoFinal = 'Cancelado';
                 esCancelado = true;
-            } else if (codigoEstatus === 'N') {
+            } else if (codigoEstatus && codigoEstatus.startsWith('N')) {
                 estadoFinal = 'No Encontrado';
+            }
+
+            // También verificar EstatusCancelacion como respaldo
+            if (estatusCancelacion && estatusCancelacion.toLowerCase().includes('cancelado')) {
+                estadoFinal = 'Cancelado';
+                esCancelado = true;
+                esVigente = false;
             }
 
             return {
@@ -313,59 +321,77 @@ class XMLAnalyzer {
     }
 
     /**
-     * Verificar estado de múltiples XMLs en el SAT
+     * Verificar estado de múltiples XMLs en el SAT (en paralelo para mayor velocidad)
      */
     async verificarEstadoMultiple(analisisResultados, opciones = {}) {
-        const { delay = 500, maxConcurrent = 5 } = opciones;
+        const { delay = 100, maxConcurrent = 10 } = opciones; // Reducido delay y aumentado concurrencia
 
-        console.log(`\n🔍 Verificando estado en el SAT...`);
+        console.log(`\n🔍 Verificando estado en el SAT (procesamiento en paralelo)...`);
         console.log(`   Total a verificar: ${analisisResultados.porEstado.noVerificado.length}`);
-        console.log(`   Delay entre consultas: ${delay}ms\n`);
+        console.log(`   Consultas simultáneas: ${maxConcurrent}`);
+        console.log(`   Delay entre lotes: ${delay}ms\n`);
 
         const noVerificados = analisisResultados.porEstado.noVerificado;
         const vigentes = [];
         const cancelados = [];
         const errores = [];
 
-        for (let i = 0; i < noVerificados.length; i++) {
-            const factura = noVerificados[i];
+        // Procesar en lotes paralelos
+        for (let i = 0; i < noVerificados.length; i += maxConcurrent) {
+            const lote = noVerificados.slice(i, i + maxConcurrent);
+            const promesas = lote.map(async (factura, index) => {
+                const numeroGlobal = i + index + 1;
 
-            if (!factura.uuid) {
-                console.log(`   [${i + 1}/${noVerificados.length}] ⚠️  Sin UUID: ${factura.fileName}`);
-                errores.push(factura);
-                continue;
-            }
-
-            console.log(`   [${i + 1}/${noVerificados.length}] Verificando: ${factura.uuid.substring(0, 8)}...`);
-
-            const estadoSAT = await this.verificarEstadoSAT(
-                factura.uuid,
-                factura.emisor.rfc,
-                factura.receptor.rfc,
-                factura.total
-            );
-
-            // Agregar información de estado a la factura
-            factura.estadoSAT = estadoSAT;
-
-            if (estadoSAT.success) {
-                if (estadoSAT.esVigente) {
-                    vigentes.push(factura);
-                    console.log(`      ✓ VIGENTE`);
-                } else if (estadoSAT.esCancelado) {
-                    cancelados.push(factura);
-                    console.log(`      ✗ CANCELADO`);
-                } else {
-                    errores.push(factura);
-                    console.log(`      ? ${estadoSAT.estado}`);
+                if (!factura.uuid) {
+                    console.log(`   [${numeroGlobal}/${noVerificados.length}] ⚠️  Sin UUID: ${factura.fileName}`);
+                    return { factura, tipo: 'error' };
                 }
-            } else {
-                errores.push(factura);
-                console.log(`      ⚠️  Error: ${estadoSAT.error}`);
-            }
 
-            // Delay para no saturar el servicio del SAT
-            if (i < noVerificados.length - 1) {
+                console.log(`   [${numeroGlobal}/${noVerificados.length}] Verificando: ${factura.uuid.substring(0, 8)}...`);
+
+                const estadoSAT = await this.verificarEstadoSAT(
+                    factura.uuid,
+                    factura.emisor.rfc,
+                    factura.receptor.rfc,
+                    factura.total
+                );
+
+                // Agregar información de estado a la factura
+                factura.estadoSAT = estadoSAT;
+
+                if (estadoSAT.success) {
+                    if (estadoSAT.esVigente) {
+                        console.log(`      ✓ VIGENTE`);
+                        return { factura, tipo: 'vigente' };
+                    } else if (estadoSAT.esCancelado) {
+                        console.log(`      ✗ CANCELADO`);
+                        return { factura, tipo: 'cancelado' };
+                    } else {
+                        console.log(`      ? ${estadoSAT.estado}`);
+                        return { factura, tipo: 'error' };
+                    }
+                } else {
+                    console.log(`      ⚠️  Error: ${estadoSAT.error}`);
+                    return { factura, tipo: 'error' };
+                }
+            });
+
+            // Esperar a que termine el lote actual
+            const resultados = await Promise.all(promesas);
+
+            // Clasificar resultados
+            resultados.forEach(resultado => {
+                if (resultado.tipo === 'vigente') {
+                    vigentes.push(resultado.factura);
+                } else if (resultado.tipo === 'cancelado') {
+                    cancelados.push(resultado.factura);
+                } else {
+                    errores.push(resultado.factura);
+                }
+            });
+
+            // Delay entre lotes para no saturar el SAT
+            if (i + maxConcurrent < noVerificados.length) {
                 await this.sleep(delay);
             }
         }
